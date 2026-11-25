@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from geometry_diagrams.facade import labeled_point_ids
+from geometry_diagrams.ir.point_labels import labeled_point_ids
 from geometry_diagrams.util.tikz_extraction import point_names_match
 
 
@@ -137,24 +137,3 @@ class NameResolver:
             return a
 
         return walk(args)
-
-
-def property_gate_failures(
-    results: list[dict], already_failed: "set[str] | list[str]" = (), gate: bool = True,
-) -> tuple[list[str], list[str]]:
-    """The ``(failures, skipped)`` gate entries of a record's ``sympy_property_checks``.
-
-    A skipped check (``passed`` None, e.g. an unsupported type) is never a pass. With
-    ``gate`` a failed one is ``property:<name>``, plus ``:unresolved`` / ``:ambiguous``
-    when a point name was the problem (kept apart from a geometry failure), unless
-    ``already_failed`` has the same property's name (the tikz check of it failed too).
-    """
-    failures: list[str] = []
-    skipped: list[str] = []
-    for r in results or []:
-        name = r.get("name", "")
-        if r.get("passed") is None:
-            skipped.append(f"property:{name}")
-        elif gate and r.get("passed") is False and name not in already_failed:
-            failures.append(f"property:{name}" + (f":{r['resolution']}" if r.get("resolution") else ""))
-    return failures, skipped

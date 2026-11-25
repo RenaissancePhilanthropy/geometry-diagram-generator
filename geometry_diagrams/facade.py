@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 from .config import GeometryConfig, resolve_config
 from .features import parse_features, tagged_insertions
 from .ir.font import FontConfig
+from .ir.point_labels import labeled_point_ids
 from .ir.renderer import Renderer, SVGRenderer, TikZRenderer
 from .strategies.base import SubstanceStrategy, run_sync
 from .strategies.llm import model_options_context
@@ -564,20 +565,6 @@ def query_geometry_diagram(
     except ValueError as e:
         return json.dumps({"error": str(e)})
     return dispatch_query(sym, query_type, resolved)
-
-
-def labeled_point_ids(diagram: "DiagramIR", *, untexted_show_id: bool = False) -> dict[str, set[str]]:
-    """Each explicit point-label text of ``diagram`` -> the ids of the points it labels
-    (usually one; a text on several points is ambiguous). A label without text shows the
-    point's own id: it adds nothing here unless ``untexted_show_id``, which lists the id
-    as that label's text."""
-    from .ir.ir import LabelPoint
-
-    labeled: dict[str, set[str]] = {}
-    for op in diagram.render:
-        if isinstance(op, LabelPoint) and (op.text or untexted_show_id):
-            labeled.setdefault(op.text or op.p, set()).add(op.p)
-    return labeled
 
 
 def _resolve_point_labels(

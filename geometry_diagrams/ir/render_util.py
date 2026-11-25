@@ -272,16 +272,32 @@ SVG_STYLE_KEYS = frozenset(COLOR_STYLE_KEYS) | {
 }
 
 
+# Style-dict keys TikZ accepts as options: what the TikZ renderer translates (``line_width``,
+# ``clip``) plus the TikZ option names that are valid verbatim. Any other key is passed through
+# to LaTeX as ``key=value`` and fails the build (``font-size`` is SVG-only; a guessed ``dash``
+# is no TikZ key either).
+TIKZ_STYLE_KEYS = frozenset(COLOR_STYLE_KEYS) | {
+    "line_width", "clip", "thick", "thin", "very thick", "very thin", "ultra thick", "ultra thin",
+    "dashed", "dotted", "densely dashed", "loosely dashed", "densely dotted", "loosely dotted",
+    "dash pattern", "dash phase", "line cap", "line join", "miter limit", "opacity", "fill opacity",
+    "draw opacity", "text opacity", "rounded corners", "double", "->", "<-", "<->", ">", "shorten >",
+    "shorten <", "solid", "pattern", "pattern color", "shading", "inner color", "outer color",
+}
+SVG_KEY_NOTE = "keys the renderer ignores"
+TIKZ_KEY_NOTE = "keys TikZ does not recognise (the LaTeX build would fail)"
+
+
 def unused_style_warnings(
     styles: dict[str, dict[str, Any]],
     ops: Any,
     warnings: list[str] | None,
     known_keys: frozenset[str] | None = None,
+    unknown_key_note: str = SVG_KEY_NOTE,
 ) -> None:
     """Warn about a ``styles`` entry no render op names (as its ``style`` or
     ``group``), which has no effect, and, when ``known_keys`` is given, about
-    keys in an entry that the renderer ignores (a model guessing
-    ``{"dash": "dashed"}`` for ``{"dashed": true}``)."""
+    keys in an entry outside it (``unknown_key_note`` says what the renderer does
+    with them; a model guessing ``{"dash": "dashed"}`` for ``{"dashed": true}``)."""
     if warnings is None:
         return
     named = {n for op in ops for n in (getattr(op, "style", None), getattr(op, "group", None)) if n}
@@ -295,7 +311,7 @@ def unused_style_warnings(
             bad = sorted(k for k in style if k not in known_keys)
             if bad:
                 warnings.append(
-                    f"styles entry {name!r} has keys the renderer ignores: {', '.join(bad)} "
+                    f"styles entry {name!r} has {unknown_key_note}: {', '.join(bad)} "
                     "(use e.g. {\"dashed\": true}, {\"dotted\": true}, {\"thick\": true}, "
                     "{\"color\": ...})"
                 )

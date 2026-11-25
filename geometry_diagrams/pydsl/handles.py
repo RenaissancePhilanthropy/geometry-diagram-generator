@@ -184,7 +184,7 @@ class Line:
     _builder: "object" = field(repr=False, compare=False)
 
     def label(self, text: str, pos: "float | None" = None) -> None:
-        """Label this line with text, e.g. ell.label("ell")."""
+        """Label this line with text, e.g. ell.label("ell"). pos (0-1, default 0.5) is how far along from its first defining point to its second the label sits."""
         from geometry_diagrams.ir.ir import LabelSegment
 
         text = _sanitize_label_text(text, "label")
@@ -197,7 +197,7 @@ class Ray:
     _builder: "object" = field(repr=False, compare=False)
 
     def label(self, text: str, pos: "float | None" = None) -> None:
-        """Label this ray with text, e.g. r.label("r")."""
+        """Label this ray with text, e.g. r.label("r"). pos (0-1, default 0.5) is how far along from its start to its second defining point the label sits."""
         from geometry_diagrams.ir.ir import LabelSegment
 
         text = _sanitize_label_text(text, "label")
@@ -210,7 +210,7 @@ class Arc:
     _builder: "object" = field(repr=False, compare=False)
 
     def label(self, text: str, pos: "float | None" = None) -> None:
-        """Label this arc with text, e.g. arc1.label("alpha")."""
+        """Label this arc with text, e.g. arc1.label("alpha"). pos (0-1, default 0.5) is how far along the arc from its start the label sits."""
         from geometry_diagrams.ir.ir import LabelSegment
 
         text = _sanitize_label_text(text, "label")
@@ -223,7 +223,7 @@ class Sector:
     _builder: "object" = field(repr=False, compare=False)
 
     def label(self, text: str, pos: "float | None" = None) -> None:
-        """Label this sector with text, placed near its curved edge, e.g. sec.label("S")."""
+        """Label this sector with text, placed near its curved edge, e.g. sec.label("S"). pos (0-1, default 0.5) is how far along the curved edge from its start the label sits."""
         from geometry_diagrams.ir.ir import LabelSegment
 
         text = _sanitize_label_text(text, "label")
@@ -236,7 +236,7 @@ class Segment:
     _builder: "object" = field(repr=False, compare=False)
 
     def label(self, text: str, pos: "float | None" = None) -> None:
-        """Label this segment with text, e.g. seg.label("r")."""
+        """Label this segment with text, e.g. seg.label("r"). pos (0-1, default 0.5) is how far along from its first endpoint the label sits."""
         from geometry_diagrams.ir.ir import LabelSegment
 
         text = _sanitize_label_text(text, "label")

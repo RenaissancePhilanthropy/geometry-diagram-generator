@@ -638,6 +638,13 @@ def dilate_point(source: spg.Point, center: spg.Point, k: Any) -> spg.Point:
     )
 
 
+def float_point_table(sym: dict) -> dict[str, tuple[float, float]]:
+    """Every SymPy point of a compiled symbol table as id -> (x, y) floats: the table
+    ``StructuredRunResult.sym_table`` holds and the evals' property checks read (hidden
+    ``__`` helpers included)."""
+    return {k: (float(v.x), float(v.y)) for k, v in sym.items() if isinstance(v, spg.Point)}
+
+
 def compile_defs(
     diagram: ir.DiagramIR,
     *,

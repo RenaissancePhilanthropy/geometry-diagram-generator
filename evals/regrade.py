@@ -11,7 +11,7 @@ re-run the scenario's ``expected_properties`` on the figure recompiled from the
 stored ``diagram_ir`` (every record, SVG-only ones included; point names resolve
 through ``evals/property_names.py``, with the record's ``variable_ids`` when it has
 them: records from before they were stored resolve by label only), and recompute ``gate_status`` with ``evals/run.py``'s own
-``_finalize_gate_status``. Edit-chain records are left alone.
+``evals.gate.finalize_gate_status``. Edit-chain records are left alone.
 
 Usage:
     python evals/regrade.py \\
@@ -28,11 +28,10 @@ from collections import Counter
 from pathlib import Path
 
 from evals.property_names import NameResolver
-from evals.run import _finalize_gate_status
+from evals.gate import finalize_gate_status
 from evals.sympy_checks import _validate_properties_sympy
-from geometry_diagrams.strategies.ir_pipeline import float_point_table
 from geometry_diagrams.ir.ir import DiagramIR
-from geometry_diagrams.ir.to_sympy import compile_defs
+from geometry_diagrams.ir.to_sympy import compile_defs, float_point_table
 from geometry_diagrams.util.tikz_geometry import resolve_all_coordinates, validate_geometric_property
 
 # Match the production tolerance from evals/run.py
@@ -86,7 +85,7 @@ def _regrade_record(
         rec["sympy_property_checks"] = new_props
 
     old_gate = rec.get("gate_status")
-    _finalize_gate_status(rec, (scenario or {}).get("fail_on_warnings") or [], gate_properties)
+    finalize_gate_status(rec, (scenario or {}).get("fail_on_warnings") or [], gate_properties)
     new_gate = rec["gate_status"]
 
     summary = ""

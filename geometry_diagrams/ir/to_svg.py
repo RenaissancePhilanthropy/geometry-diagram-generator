@@ -1588,8 +1588,15 @@ def _emit_svg_op(
             a, b = endpoints
             ax, ay = pt(a)
             bx, by = pt(b)
-            # Midpoint, offset perpendicular
-            mx, my = (ax + bx) / 2, (ay + by) / 2
+            # The label spot on the line: the midpoint, or ``pos`` of the way from the first
+            # endpoint to the second (0-1, the same meaning as tkz's ``pos=``), then offset
+            # perpendicular
+            slot_t = 0.5
+            if pos is not None:
+                slot_t = min(1.0, max(0.0, float(pos)))
+                if slot_t != pos:
+                    _warn(warnings, f"LabelSegment pos={pos} for '{seg_id}' is outside 0-1; using {slot_t}")
+            mx, my = ax + (bx - ax) * slot_t, ay + (by - ay) * slot_t
             away_from = DERIVED_REGISTRY.label_away_from(sym, seg_id)
             away = (
                 away_normal((ax, ay), (bx, by), gxy(*away_from))
@@ -1640,6 +1647,7 @@ def _emit_svg_op(
                     _pick_segment_label_slot(
                         lp, (ax, ay, bx, by), (nx, ny), side,
                         drawn_segments, drawn_circles or [], pending_labels,
+                        slots=_SEGMENT_LABEL_SLOTS if pos is None else (slot_t,),
                     )
                 pending_labels.append(lp)
             else:
@@ -3875,9 +3883,12 @@ def _pick_segment_label_slot(
     drawn_segments: list[tuple[float, float, float, float]],
     drawn_circles: list[tuple[float, float, float, bool]],
     placed_labels: list[_LabelPlacement],
+    slots: tuple[float, ...] = _SEGMENT_LABEL_SLOTS,
 ) -> None:
     """Move ``lp``, a straight segment's label, to the least crowded spot that
-    keeps it attached to the segment, in place.
+    keeps it attached to the segment, in place. ``slots`` are the fractions along
+    the segment to try: the label's requested ``pos`` alone when it has one (it may
+    switch sides but never slides away from where it was asked to sit).
 
     ``lp`` starts at the segment's midpoint, one label offset to the side the
     point-count vote prefers (``side``, ``normal`` the unit perpendicular). If
@@ -3919,14 +3930,14 @@ def _pick_segment_label_slot(
     spots = {
         sgn: [
             (ax + (bx - ax) * t + nx * _LABEL_OFFSET * sgn, ay + (by - ay) * t + ny * _LABEL_OFFSET * sgn)
-            for t in _SEGMENT_LABEL_SLOTS
+            for t in slots
         ]
         for sgn in (side, -side)
     }
     scores = {sgn: [crowding(x, y) for x, y in xy] for sgn, xy in spots.items()}
     sides = sorted((side, -side), key=lambda sgn: sum(scores[sgn]))  # stable: ties keep ``side`` first
     best, best_xy = None, default_xy
-    for k in range(len(_SEGMENT_LABEL_SLOTS)):
+    for k in range(len(slots)):
         for sgn in sides:
             if best is None or scores[sgn][k] < best:
                 best, best_xy = scores[sgn][k], spots[sgn][k]

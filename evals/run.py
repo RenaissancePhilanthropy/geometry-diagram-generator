@@ -54,7 +54,9 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 from evals.ir_diagnostics import classify_ir
 from evals.check_types import structural_type
-from evals.property_names import NameResolver, property_gate_failures
+from evals.gate import collect_check_outcomes as _collect_check_outcomes
+from evals.gate import finalize_gate_status as _finalize_gate_status
+from evals.property_names import NameResolver
 from evals.scenarios import _validate_scenarios, count_unsupported_checks, split_by_required_features
 from evals.sympy_checks import (
     PRISM_PROPERTY_TYPES,
@@ -817,134 +819,6 @@ def _svg_required_label_checks(svg: str, required: list[str]) -> dict[str, Any]:
         if not any(_svg_label_matches(t, nreq) for t in texts):
             missing.append(req)
     return {"passed": not missing, "missing": missing}
-
-
-def _collect_check_outcomes(
-    record: dict, gate_properties: bool = True
-) -> tuple[list[str], list[str], bool]:
-    """Return (failures, skipped, had_checks) across deterministic checks.
-
-    ``gate_properties``: a failed ``expected_properties`` check on the compiled
-    geometry (``sympy_property_checks``) adds a ``property:<name>`` failure;
-    off, such a failure is recorded but does not gate (the behaviour before the
-    flag, used to compare old runs)."""
-    failures: list[str] = []
-    skipped: list[str] = []
-    had_checks = False
-
-    for name, result in (record.get("tikz_checks") or {}).items():
-        if not isinstance(result, dict):
-            continue
-        had_checks = True
-        passed = result.get("passed")
-        if passed is False:
-            failures.append(name)
-        elif passed is not True and result.get("error"):
-            # The check could not be evaluated (it raised): a broken check is
-            # not a deliberate skip, so it must not soft-pass the gate.
-            failures.append(f"{name}:error")
-        elif result.get("skipped") is True or passed is None:
-            skipped.append(name)
-
-    canvas_checks = record.get("canvas_checks")
-    if isinstance(canvas_checks, dict):
-        had_checks = True
-        if not canvas_checks.get("passed", False):
-            missing = canvas_checks.get("missing") or ["required_canvas"]
-            failures.extend(f"canvas:{name}" for name in missing)
-
-    expected_point_checks = record.get("expected_point_checks")
-    if isinstance(expected_point_checks, dict):
-        had_checks = True
-        failures.extend(f"point:{name}:missing" for name in expected_point_checks.get("missing", []))
-        failures.extend(
-            f"point:{name}:mismatch"
-            for name in sorted((expected_point_checks.get("mismatches") or {}).keys())
-        )
-
-    structural_checks = record.get("structural_checks")
-    if isinstance(structural_checks, dict):
-        had_checks = True
-        for name, result in structural_checks.items():
-            if isinstance(result, dict) and result.get("passed") is False:
-                failures.append(f"structural:{name}")
-            elif isinstance(result, dict) and result.get("passed") is None:
-                skipped.append(f"structural:{name}")
-
-    # Property checks of an unsupported type: not evaluated, so never a pass.
-    property_results = record.get("sympy_property_checks") or []
-    prop_failures, prop_skipped = property_gate_failures(property_results, set(failures), gate_properties)
-    failures.extend(prop_failures)
-    skipped.extend(prop_skipped)
-    if property_results and (gate_properties or prop_skipped):
-        had_checks = True
-
-    prism_checks = record.get("prism_property_checks")
-    if prism_checks:
-        had_checks = True
-        failures.extend(f"prism:{r['name']}" for r in prism_checks if r.get("passed") is False)
-
-    stack_checks = record.get("stack_property_checks")
-    if stack_checks:
-        had_checks = True
-        failures.extend(f"stack:{r['name']}" for r in stack_checks if r.get("passed") is False)
-
-    query_results = record.get("query_results", [])
-    if query_results:
-        had_checks = True
-        for qidx, qr in enumerate(query_results):
-            if qr.get("error"):
-                failures.append(f"query:{qidx}:error")
-            elif not qr.get("tool_called"):
-                failures.append(f"query:{qidx}:tool_not_called")
-            elif qr.get("query_type_match") is False:
-                failures.append(f"query:{qidx}:wrong_query_type")
-
-    return failures, skipped, had_checks
-
-
-def _finalize_gate_status(
-    record: dict, fail_on_warnings: list[str] | None = None, gate_properties: bool = True,
-) -> None:
-    """Populate deterministic_pass, gate_status, and gate_failures.
-
-    ``fail_on_warnings``: scenario substrings; each one found (case-sensitive)
-    in any recorded warning adds one ``warning:<substring>`` gate failure.
-    ``gate_properties``: see ``_collect_check_outcomes``.
-    """
-    failures, skipped, had_checks = _collect_check_outcomes(record, gate_properties)
-
-    if failures:
-        record["deterministic_pass"] = False
-    elif skipped:
-        record["deterministic_pass"] = None
-    else:
-        record["deterministic_pass"] = True if had_checks or record.get("tikz_code") else None
-
-    gate_failures: list[str] = []
-    if not record.get("generation_success"):
-        gate_failures.append("generation")
-    if not record.get("svg_rendered"):
-        gate_failures.append("svg_render")
-    svg_checks = record.get("svg_checks")
-    if svg_checks and not svg_checks.get("passed", False):
-        for failure in svg_checks.get("failures", []):
-            gate_failures.append(f"svg:{failure}")
-    gate_failures.extend(failures)
-    recorded = record.get("warnings") or []
-    for sub in fail_on_warnings or []:
-        if any(sub in w for w in recorded):
-            gate_failures.append(f"warning:{sub}")
-    record["gate_failures"] = gate_failures
-
-    if gate_failures:
-        record["gate_status"] = "fail"
-    elif skipped:
-        record["gate_status"] = "soft_pass"
-    elif record.get("svg_rendered"):
-        record["gate_status"] = "pass"
-    else:
-        record["gate_status"] = "fail"
 
 
 def _check_requested_scenario_ids(

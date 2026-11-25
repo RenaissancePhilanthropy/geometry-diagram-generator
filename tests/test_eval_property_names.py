@@ -117,7 +117,9 @@ def test_render_only_and_unknown_types_do_not_resolve_their_text_arguments():
 
 
 def test_the_facade_label_lookup_is_shared():
-    from geometry_diagrams.facade import labeled_point_ids
+    from geometry_diagrams.facade import labeled_point_ids as via_facade
+    from geometry_diagrams.ir.point_labels import labeled_point_ids
+    assert via_facade is labeled_point_ids  # the facade re-exports the shared helper
     assert labeled_point_ids(DIAGRAM)["P"] == {"Pp"}
     assert labeled_point_ids(_diagram(("p", None))) == {}
 
@@ -300,7 +302,7 @@ def test_unicode_primes_and_braced_subscripts_match():
 # --- one gate-failure rule for the runner and regrade ----------------------------------
 
 def test_property_gate_failures_names_naming_problems_and_dedups_against_tikz():
-    from evals.property_names import property_gate_failures
+    from evals.gate import property_gate_failures
     results = [
         {"name": "geo", "passed": False}, {"name": "nm", "passed": False, "resolution": "unresolved"},
         {"name": "amb", "passed": False, "resolution": "ambiguous"}, {"name": "ok", "passed": True},

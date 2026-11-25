@@ -12,10 +12,9 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-import sympy.geometry as spg
 
 from ..ir.ir import DiagramIR
-from ..ir.to_sympy import compile_defs
+from ..ir.to_sympy import compile_defs, float_point_table
 from ..ir.checks import run_checks, check_render_angles
 from ..ir.angle_audit import AnglePolicy, audit_angles
 from ..ir.answer_audit import audit_answer_labels
@@ -49,13 +48,6 @@ class StructuredRunResult:
     # should add the same optional `warnings: list[str] | None = None`
     # argument to compile_defs and have run_ir_pipeline pass its collector.
     warnings: list[str] = field(default_factory=list)
-
-
-def float_point_table(sym: dict) -> dict[str, tuple[float, float]]:
-    """Every SymPy point of a compiled symbol table as id -> (x, y) floats: the table
-    ``StructuredRunResult.sym_table`` holds and the evals' property checks read (hidden
-    ``__`` helpers included)."""
-    return {k: (float(v.x), float(v.y)) for k, v in sym.items() if isinstance(v, spg.Point)}
 
 
 class PipelineError(RuntimeError):

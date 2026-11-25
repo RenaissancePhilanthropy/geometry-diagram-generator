@@ -39,7 +39,27 @@ def test_valid_used_style_adds_no_warning():
     assert not any("styles entry" in m for m in w)
 
 
-def test_tikz_warns_unused_but_not_unknown_keys():
+def test_tikz_warns_unused_entries():
     w = _tikz_warnings({"f": {"very thick": True}}, [ir.Fill(obj="T", style=None)])
     assert any("not used" in m for m in w)
-    assert not any("ignores" in m for m in w)
+
+
+def test_tikz_warns_about_keys_that_would_fail_the_latex_build():
+    w = _tikz_warnings({"f": {"dash": "dashed", "font-size": 14, "color": "red"}}, [ir.Fill(obj="T", style="f")])
+    (m,) = [m for m in w if "does not recognise" in m]
+    assert "'f'" in m and "dash" in m and "font-size" in m and "color" not in m.split(":", 1)[1].split("(use")[0]
+    assert not any("not used" in m for m in w)
+
+
+def test_tikz_accepts_valid_options_and_the_renderer_keys():
+    valid = {"very thick": True, "dashed": True, "opacity": 0.5, "->": True, "line_width": 2,
+             "clip": "own_extent", "color": "red", "fill": "blue", "rounded corners": "2pt", "densely dotted": True}
+    w = _tikz_warnings({"f": valid}, [ir.Fill(obj="T", style="f")])
+    assert not any("styles entry" in m for m in w)
+
+
+def test_svg_and_tikz_notes_differ():
+    svg = _svg_warnings({"f": {"dash": "dashed"}}, [ir.Fill(obj="T", style="f")])
+    tikz = _tikz_warnings({"f": {"dash": "dashed"}}, [ir.Fill(obj="T", style="f")])
+    assert any("keys the renderer ignores: dash" in m for m in svg)
+    assert any("keys TikZ does not recognise (the LaTeX build would fail): dash" in m for m in tikz)

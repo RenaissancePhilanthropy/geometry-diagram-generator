@@ -694,6 +694,18 @@ Sources:
 - a prism on a canvas with unequal axis scales (the projection is skewed);
 - a prism dimension label whose first number does not match the true length of the edge it labels: a `label_segment` on a prism edge, or a `length_label` / `width_label` / `height_label` field (substring `does not match its true length`; see [Label fields](#prism-label-fields));
 - an unrecognized color string (see [Color forms](#color-forms));
+- a `styles` entry no render op names (as its `style`, or its `group` for marks), which has no
+  effect: `styles entry 's_CO' is not used by any render op, so it has no effect; set it as the
+  `style` of the op that should use it`;
+- a `styles` entry with a key the renderer does not read, a model guessing `{"dash": "dashed"}`
+  for `{"dashed": true}`: SVG says `has keys the renderer ignores: dash` (the SVG renderer reads
+  `color`, `fill`, `draw`, `text`, `thick`, `thin`, `line_width`, `dashed`, `dotted`, `opacity`, the
+  arrows `->` `<-` `<->`, `font-size` and `clip`), TikZ says `has keys TikZ does not recognise (the
+  LaTeX build would fail)` (TikZ passes every key through as an option, so the build fails on
+  `font-size` or `dash`; `render_util.TIKZ_STYLE_KEYS` lists what it accepts);
+- a `label_segment` whose `pos` is outside 0-1 (clamped). `pos` is how far from the first endpoint to
+  the second a straight segment's, ray's or line's label sits (default 0.5, the midpoint), and how
+  far along the sweep from its start an arc's or sector's sits;
 - a right-angle mark on an angle that is not drawn at 90°, or an angle label whose text states a
   different value than the drawn angle, by more than a tolerance (1° by default):
   `Right-angle mark on ∠ABC, which is drawn at 72.5°, not 90°`; `Angle label "35°" is on ∠ABC,
