@@ -45,6 +45,7 @@ Scenario fields (gates, property checks, `requires_features`, `fail_on_warnings`
 | `generate_scenarios.py` | Build `scenarios_generated.yaml` from templates (see [docs/templated-scenarios.md](../docs/templated-scenarios.md)) |
 | `ir_diagnostics.py` | Static analysis of a `DiagramIR` to classify failure modes |
 | `gate.py` | The gate: which checks fail a record or are skipped, and the pass / soft_pass / fail status (pure; shared by `run.py` and `regrade.py`) |
+| `label_report.py` | Label-placement regression report: re-renders stored figures (no model calls) and measures point labels on their dot or far from it and segment labels far from their line, for this checkout or another (`--code-root`); `compare` diffs two reports |
 | `check_types.py` | The registry of check types (properties and structural): arguments, tolerance dimension and evaluator in one place; add a type here |
 | `property_names.py` | Resolves a scenario's point names ("A") to figure ids: id, label text, primed spelling, `variable_ids` |
 | `sympy_checks.py` | Property validation used by the gate: tolerances, name resolution, prism/stack queries |

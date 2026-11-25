@@ -213,6 +213,12 @@ class _LabelPlacement:
     # hair across an axis from its point is pushed back to the point's side
     # rather than all the way across the line.
     owner_point: tuple[float, float] | None = None
+    # For a straight segment's label: the SVG-px segment it labels, the unit normal it is
+    # offset along and the fractions along it it may sit at (``_reattach_labels`` puts a label
+    # that drifted off its segment back at one of them).
+    attach_segment: tuple[float, float, float, float] | None = None
+    attach_normal: tuple[float, float] | None = None
+    attach_slots: tuple[float, ...] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -607,6 +613,10 @@ def _ir_to_svg_impl(
     # passes above already established as clear.
     _gravitate_to_ideal_axis(pending_labels, drawn_segments, drawn_circles, drawn_ellipses, tick_label_boxes)
     _clamp_angle_labels_to_wedge(pending_labels)
+    _reattach_labels(
+        pending_labels,
+        _LabelObstacles(drawn_segments, drawn_circles, drawn_ellipses, tick_label_boxes, pending_labels),
+    )
     for lp in pending_labels:
         # Stamp the final (post-nudge, post-collision-resolution) bbox and
         # source text onto the emitted element itself, as data-* attributes.
@@ -1643,11 +1653,13 @@ def _emit_svg_op(
                 attrs={"data-role": "label-segment", "data-for": seg_id},
             )
             if pending_labels is not None:
+                slots = _SEGMENT_LABEL_SLOTS if pos is None else (slot_t,)
+                lp.attach_segment, lp.attach_normal, lp.attach_slots = (ax, ay, bx, by), (nx, ny), slots
                 if drawn_segments is not None:
                     _pick_segment_label_slot(
                         lp, (ax, ay, bx, by), (nx, ny), side,
-                        drawn_segments, drawn_circles or [], pending_labels,
-                        slots=_SEGMENT_LABEL_SLOTS if pos is None else (slot_t,),
+                        _LabelObstacles(drawn_segments, drawn_circles or [], drawn_ellipses or [], [], pending_labels),
+                        slots=slots,
                     )
                 pending_labels.append(lp)
             else:
@@ -3875,14 +3887,64 @@ def _bisector_angle(da: float, db: float) -> float:
 _SEGMENT_LABEL_SLOTS = (0.5, 0.35, 0.65, 0.25, 0.75)
 
 
+@dataclass
+class _LabelObstacles:
+    """What a label's spot is scored against (see ``_label_crowding``): the drawn lines,
+    circles and ellipses, the fixed tick-label boxes and the other labels placed so far."""
+    segments: list
+    circles: list
+    ellipses: list
+    boxes: list
+    labels: list
+
+
+def _label_crowding(
+    lp: _LabelPlacement, x: float, y: float, obs: _LabelObstacles,
+    anchor: str | None = None, skip_segment: tuple[float, float, float, float] | None = None,
+    labels_only: bool = False,
+) -> float:
+    """How obstructed ``lp`` is with its anchor at (x, y): the distance the nudge passes would
+    still have to push it off the drawn lines, circles and ellipses, plus an overlap penalty for
+    every tick-label box and other label it covers. 0 = free. ``labels_only`` counts just that
+    overlap penalty (text on text, which no line clearance excuses). ``lp`` is left where it was."""
+    saved = (lp.x, lp.y, lp.anchor)
+    lp.x, lp.y = x, y
+    if anchor is not None:
+        lp.anchor = anchor
+    own = ()
+    if skip_segment is not None:
+        ax, ay, bx, by = skip_segment
+        own = ((ax, ay, bx, by), (bx, by, ax, ay))
+    total = 0.0
+    for seg in () if labels_only else obs.segments:
+        if seg in own:
+            continue
+        verdict = _segment_clearance(x, y, lp, seg)
+        if verdict is not None:
+            total += verdict[2]
+    for circle in () if labels_only else obs.circles:
+        verdict = _circle_clearance(x, y, lp, circle)
+        if verdict is not None:
+            total += verdict[2]
+    for ellipse in () if labels_only else obs.ellipses:
+        verdict = _ellipse_clearance(x, y, lp, ellipse)
+        if verdict is not None:
+            total += verdict[2]
+    box = _label_bbox(lp)
+    for other_box in [*obs.boxes, *(_label_bbox(o) for o in obs.labels if o is not lp)]:
+        if _bboxes_overlap(box, other_box):
+            total += 1.0 + min(box[2], other_box[2]) - max(box[0], other_box[0]) \
+                + min(box[3], other_box[3]) - max(box[1], other_box[1])
+    lp.x, lp.y, lp.anchor = saved
+    return total
+
+
 def _pick_segment_label_slot(
     lp: _LabelPlacement,
     segment: tuple[float, float, float, float],
     normal: tuple[float, float],
     side: float,
-    drawn_segments: list[tuple[float, float, float, float]],
-    drawn_circles: list[tuple[float, float, float, bool]],
-    placed_labels: list[_LabelPlacement],
+    obs: _LabelObstacles,
     slots: tuple[float, ...] = _SEGMENT_LABEL_SLOTS,
 ) -> None:
     """Move ``lp``, a straight segment's label, to the least crowded spot that
@@ -3892,7 +3954,7 @@ def _pick_segment_label_slot(
 
     ``lp`` starts at the segment's midpoint, one label offset to the side the
     point-count vote prefers (``side``, ``normal`` the unit perpendicular). If
-    an obstacle (another drawn line or circle, or a label already placed)
+    an obstacle (another drawn line, circle or ellipse, or a label already placed)
     would push it there, the later nudge passes move it away from the obstacle
     by whatever distance it takes, which can leave it floating in a
     neighbouring wedge, far from its segment. So first try the other slots
@@ -3902,30 +3964,8 @@ def _pick_segment_label_slot(
     one. A label whose default spot is already unobstructed is not moved."""
     ax, ay, bx, by = segment
     nx, ny = normal
-    own = {(ax, ay, bx, by), (bx, by, ax, ay)}
-    obstacles = [seg for seg in drawn_segments if seg not in own]
-
-    def crowding(x: float, y: float) -> float:
-        lp.x, lp.y = x, y
-        total = 0.0
-        for seg in obstacles:
-            verdict = _segment_clearance(x, y, lp, seg)
-            if verdict is not None:
-                total += verdict[2]
-        for circle in drawn_circles:
-            verdict = _circle_clearance(x, y, lp, circle)
-            if verdict is not None:
-                total += verdict[2]
-        box = _label_bbox(lp)
-        for other in placed_labels:
-            ob = _label_bbox(other)
-            if _bboxes_overlap(box, ob):
-                total += 1.0 + min(box[2], ob[2]) - max(box[0], ob[0]) + min(box[3], ob[3]) - max(box[1], ob[1])
-        return total
-
     default_xy = (lp.x, lp.y)
-    if crowding(*default_xy) == 0:
-        lp.x, lp.y = default_xy
+    if _label_crowding(lp, *default_xy, obs, skip_segment=segment) == 0:
         return
     spots = {
         sgn: [
@@ -3934,7 +3974,10 @@ def _pick_segment_label_slot(
         ]
         for sgn in (side, -side)
     }
-    scores = {sgn: [crowding(x, y) for x, y in xy] for sgn, xy in spots.items()}
+    scores = {
+        sgn: [_label_crowding(lp, x, y, obs, skip_segment=segment) for x, y in xy]
+        for sgn, xy in spots.items()
+    }
     sides = sorted((side, -side), key=lambda sgn: sum(scores[sgn]))  # stable: ties keep ``side`` first
     best, best_xy = None, default_xy
     for k in range(len(slots)):
@@ -3944,6 +3987,116 @@ def _pick_segment_label_slot(
         if best == 0:
             break
     lp.x, lp.y = best_xy
+
+
+# A point label's box sits this far (px, edge to point) from its point: closer than the dot
+# plus a hair and it covers the dot, farther than twice the label offset it no longer reads
+# as that point's. A segment label whose centre is farther than this from its segment's line
+# (or whose projection falls well past either end) no longer reads as that segment's.
+_POINT_LABEL_MIN_GAP = _POINT_RADIUS + 1.5
+_POINT_LABEL_MAX_GAP = 20.0
+# Between the max gap and this, a label comes back unless the spot beside its point would put it
+# on top of other labels where it now is not: a label a little far from its point in clear space
+# (an annotation text on a point) reads better than one beside it covering its neighbours' text.
+# (Lines do not count here: a label touching a line beside its point is still its point's.)
+# Beyond this it is detached for good.
+_POINT_LABEL_HARD_GAP = 40.0
+_SEGMENT_LABEL_MAX_DRIFT = 20.0
+_SEGMENT_LABEL_T_RANGE = (-0.15, 1.15)
+
+
+def _bbox_gap_to_point(box: tuple[float, float, float, float], px: float, py: float) -> float:
+    """Distance from (px, py) to the box (0 when it is inside)."""
+    return math.hypot(max(box[0] - px, 0.0, px - box[2]), max(box[1] - py, 0.0, py - box[3]))
+
+
+def _box_gap_at(lp: _LabelPlacement, x: float, y: float, anchor: str, px: float, py: float) -> float:
+    """The gap between ``lp``'s box and (px, py) were its anchor at (x, y), ``lp`` left as it was."""
+    saved = (lp.x, lp.y, lp.anchor)
+    lp.x, lp.y, lp.anchor = x, y, anchor
+    gap = _bbox_gap_to_point(_label_bbox(lp), px, py)
+    lp.x, lp.y, lp.anchor = saved
+    return gap
+
+
+# Distances (px, anchor from the point) a re-seated point label is tried at: the usual label
+# offset, then half as far again for a wide label (a long text used as a point label) that does
+# not fit beside its point at the first.
+_POINT_LABEL_RINGS = (_LABEL_OFFSET, _LABEL_OFFSET * 1.5)
+
+
+def _reattach_point_label(lp: _LabelPlacement, obs: _LabelObstacles) -> None:
+    px, py = lp.owner_point  # type: ignore[misc]
+    gap = _bbox_gap_to_point(_label_bbox(lp), px, py)
+    if _POINT_LABEL_MIN_GAP <= gap <= _POINT_LABEL_MAX_GAP:
+        return
+    cx, cy = _bbox_center(lp)
+    current = math.atan2(-(cy - py), cx - px)  # geometry-space angle of the label from its point
+    current_overlap = _label_crowding(lp, lp.x, lp.y, obs, labels_only=True)
+    best = None
+    for ring, dist in enumerate(_POINT_LABEL_RINGS):
+        for k in range(8):
+            angle = k * math.pi / 4
+            ox, oy = _angle_to_offset(angle, dist)
+            anchor = _angle_to_anchor(angle)
+            x, y = px + ox, py + oy
+            # a tall glyph's box can still touch the dot at this distance: stand it off
+            clearance = _box_gap_at(lp, x, y, anchor, px, py)
+            if clearance < _POINT_LABEL_MIN_GAP + 1:
+                x += math.cos(angle) * (_POINT_LABEL_MIN_GAP + 1 - clearance)
+                y -= math.sin(angle) * (_POINT_LABEL_MIN_GAP + 1 - clearance)
+            if _box_gap_at(lp, x, y, anchor, px, py) > _POINT_LABEL_MAX_GAP:
+                continue
+            turn = abs((angle - current + math.pi) % (2 * math.pi) - math.pi)
+            key = (_label_crowding(lp, x, y, obs, anchor=anchor), ring, turn)
+            if best is None or key < best[0]:
+                best = (key, x, y, anchor)
+    if best is None:
+        return
+    _, bx, by, banchor = best
+    if (
+        _POINT_LABEL_MAX_GAP < gap <= _POINT_LABEL_HARD_GAP
+        and _label_crowding(lp, bx, by, obs, anchor=banchor, labels_only=True) > current_overlap
+    ):
+        return  # only a little far, and beside its point it would cover other labels' text
+    lp.x, lp.y, lp.anchor = bx, by, banchor
+
+
+def _reattach_segment_label(lp: _LabelPlacement, obs: _LabelObstacles) -> None:
+    ax, ay, bx, by = lp.attach_segment  # type: ignore[misc]
+    length = math.hypot(bx - ax, by - ay)
+    if length < 1e-9:
+        return
+    cx, cy = _bbox_center(lp)
+    t = ((cx - ax) * (bx - ax) + (cy - ay) * (by - ay)) / length ** 2
+    signed = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / length
+    if abs(signed) <= _SEGMENT_LABEL_MAX_DRIFT and _SEGMENT_LABEL_T_RANGE[0] <= t <= _SEGMENT_LABEL_T_RANGE[1]:
+        return
+    nx, ny = lp.attach_normal  # type: ignore[misc]
+    # which way the label's side of the segment is along the normal
+    here = 1.0 if (cx - ax) * nx + (cy - ay) * ny >= 0 else -1.0
+    best = None
+    for order, (t_slot, sgn) in enumerate((t_, s_) for t_ in lp.attach_slots for s_ in (here, -here)):  # type: ignore[union-attr]
+        x = ax + (bx - ax) * t_slot + nx * _LABEL_OFFSET * sgn
+        y = ay + (by - ay) * t_slot + ny * _LABEL_OFFSET * sgn
+        key = (_label_crowding(lp, x, y, obs, skip_segment=lp.attach_segment), order)
+        if best is None or key < best[0]:
+            best = (key, x, y)
+    _, lp.x, lp.y = best  # type: ignore[misc]
+
+
+def _reattach_labels(labels: list[_LabelPlacement], obs: _LabelObstacles) -> None:
+    """Last pass, after every nudge and collision pass: a point label that ended up on its dot
+    or far from it, or a straight segment's label far from its segment, goes back to the
+    least crowded spot beside what it labels (8 compass slots around a point; the slots along
+    a segment, both sides), judged against the other labels' final positions. The nudge passes
+    push a label away from whatever it overlaps by however much it takes, which in a crowded
+    centre (a circle's, with radii and angle labels) detaches it from its object."""
+    for lp in labels:
+        if lp.attrs.get("data-role") == "label-point" and lp.owner_point is not None:
+            _reattach_point_label(lp, obs)
+        elif lp.attach_segment is not None and lp.attach_normal is not None and lp.attach_slots:
+            _reattach_segment_label(lp, obs)
 
 
 def _segment_label_side(
