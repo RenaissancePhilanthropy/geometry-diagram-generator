@@ -373,3 +373,34 @@ def test_ray_ref_coincides_with_vertex_raises_ircompileerror():
     msg = str(excinfo.value)
     assert "G" in msg
     assert "coincides with its vertex" in msg.lower()
+
+
+def _arm_diagram(off: float, k: float = 100.0) -> tuple[DiagramIR, dict]:
+    """O, A=(1,0)k on the drawn segment OA, and B a free point at (2, 2+off)k that sits on the
+    drawn line through O and C=(4,4)k only to within ``off`` (a fraction of the figure): an
+    angle A-O-B needs B on a line through O. SymPy's exact containment stops accepting rounding
+    noise once the coordinates reach about 100."""
+    from geometry_diagrams.ir.ir import MarkAngles, Segment
+    pts = {"O": (0, 0), "A": (k, 0), "C": (4 * k, 4 * k), "B": (2 * k, 2 * k + off * k)}
+    d = DiagramIR(
+        define=[*(PointFixed(id=n, x=x, y=y) for n, (x, y) in pts.items()),
+                Segment(id="OA", a="O", b="A"), LineThrough(id="L", p="O", q="C")],
+        render=[MarkAngles(angles=[AnglePoints(a="A", o="O", b="B")])],
+    )
+    sym = {n: spg.Point(sp.Float(x), sp.Float(y)) for n, (x, y) in pts.items()}
+    sym["OA"] = spg.Segment(sym["O"], sym["A"])
+    sym["L"] = spg.Line(sym["O"], sym["C"])
+    return d, sym
+
+
+def test_arm_point_on_its_line_to_float_rounding_is_accepted():
+    """1e-10 of the figure off the line is rounding, not a miss."""
+    d, sym = _arm_diagram(1e-10)
+    assert not sym["L"].contains(sym["B"])          # the exact test alone rejects it
+    assert check_render_angles(d, sym) == []
+
+
+def test_arm_point_visibly_off_its_line_is_still_rejected():
+    d, sym = _arm_diagram(0.01)   # 1% of the figure: a real miss
+    errors = check_render_angles(d, sym)
+    assert len(errors) == 1 and "'B'" in errors[0]

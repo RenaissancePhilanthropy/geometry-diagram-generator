@@ -1052,14 +1052,19 @@ def _build_linear_pairs(
             if isinstance(obj, spg.Point2D)
             and (not pid.startswith("__") or pid in referenced_by_angle_ops)
         ]
+        # SymPy's containment is exact (a float coordinate off a line by 1e-10 is "not on it"),
+        # so a figure built with floats is also accepted within a hair of the line: a fraction of
+        # the figure's size (ANGLE_ARM_REL_TOL), far below anything visible.
+        extent = _figure_extent(sym)
         for oid, line_obj in linear_objs.items():
             existing = pts_on.get(oid, set())
+            frame = _linear_frame(line_obj)
             for pid in point_ids:
                 if pid in existing:
                     continue
                 pt_obj = sym[pid]
                 try:
-                    if line_obj.contains(pt_obj):
+                    if line_obj.contains(pt_obj) or _near_linear(frame, pt_obj, ANGLE_ARM_REL_TOL * extent):
                         pts_on.setdefault(oid, set()).add(pid)
                 except (TypeError, ValueError):
                     continue
@@ -1071,6 +1076,59 @@ def _build_linear_pairs(
             for j in range(i + 1, len(pts_list)):
                 pairs.add(frozenset([pts_list[i], pts_list[j]]))
     return pairs
+
+
+# How close (as a fraction of the figure's size) a point must be to a drawn line, segment or
+# ray to count as on it when marking an angle: float rounding, not a visible miss.
+ANGLE_ARM_REL_TOL = 1e-6
+
+
+def _figure_extent(sym: SymTable) -> float:
+    """Bounding-box diagonal of the compiled points (1.0 when there are none to measure)."""
+    xs, ys = [], []
+    for obj in sym.values():
+        if isinstance(obj, spg.Point2D):
+            try:
+                xs.append(float(obj.x))
+                ys.append(float(obj.y))
+            except (TypeError, ValueError):
+                continue
+    return math.hypot(max(xs) - min(xs), max(ys) - min(ys)) or 1.0 if xs else 1.0
+
+
+def _linear_frame(obj: Any) -> "tuple[str, float, float, float, float] | None":
+    """(kind, x1, y1, x2, y2) of a line/segment/ray as floats, or None when it has no numeric
+    form (symbolic) or is degenerate."""
+    try:
+        (p, q) = obj.points
+        x1, y1, x2, y2 = float(p.x), float(p.y), float(q.x), float(q.y)
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if math.hypot(x2 - x1, y2 - y1) == 0.0:
+        return None
+    kind = "segment" if isinstance(obj, spg.Segment) else "ray" if isinstance(obj, spg.Ray) else "line"
+    return kind, x1, y1, x2, y2
+
+
+def _near_linear(frame: "tuple[str, float, float, float, float] | None", pt: Any, tol: float) -> bool:
+    """Is ``pt`` within ``tol`` of the line (a segment or ray: of the part of it that is drawn)?"""
+    if frame is None:
+        return False
+    try:
+        px, py = float(pt.x), float(pt.y)
+    except (TypeError, ValueError):
+        return False
+    kind, x1, y1, x2, y2 = frame
+    length = math.hypot(x2 - x1, y2 - y1)
+    along = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / length
+    across = abs((px - x1) * (y2 - y1) - (py - y1) * (x2 - x1)) / length
+    if across > tol:
+        return False
+    if kind == "segment":
+        return -tol <= along <= length + tol
+    if kind == "ray":
+        return along >= -tol
+    return True
 
 
 def _validate_triple(
