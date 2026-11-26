@@ -26,7 +26,12 @@ def test_every_registered_type_is_complete():
         assert t.evaluate is None and t.dimension is None, name  # evaluated on the full symbol table
     for name in ct.structural_type_names():
         assert ct.structural_type(name).evaluate is not None, name
-    assert len(ct.property_type_names()) == 27 and ct.structural_type_names() == {"polygon_count", "solid_count"}
+    assert len(ct.property_type_names()) == 28 and ct.structural_type_names() == {
+        "polygon_count", "solid_count",
+        # the drawing-reading checks (evals/structural_drawing.py)
+        "dashed", "shaded", "concentric_circles", "line_name", "mark_group", "polygon_drawn",
+        "object_exists", "length_ratios", "object_count",
+    }
 
 
 def test_unknown_property_type_loads_marked_unsupported_and_warns_once(caplog):

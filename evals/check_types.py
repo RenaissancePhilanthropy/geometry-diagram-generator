@@ -39,6 +39,9 @@ class CheckType:
     dimension: int | None = None
     validate_args: Callable[[Any, str], None] | None = None
     evaluate: Callable[..., Any] | None = None
+    # structural only: the arg keys that hold point names; the runner resolves them to
+    # figure ids before the evaluator runs (see evals/property_names.py)
+    name_keys: tuple[str, ...] = ()
 
 
 _REGISTRY: dict[tuple[str, str], CheckType] = {}
@@ -80,11 +83,15 @@ def register_structural_type(
     evaluate: Callable | None = None,
     *,
     validate_args: Callable[[dict, str], None] | None = None,
+    name_keys: tuple[str, ...] = (),
 ):
-    """Register a ``structural_checks`` type; a decorator when ``evaluate`` is omitted."""
+    """Register a ``structural_checks`` type; a decorator when ``evaluate`` is omitted.
+    ``name_keys``: the args keys holding point names (resolved by the runner to figure ids,
+    so the evaluator receives ids; a name that does not resolve fails the check with
+    ``resolution`` set)."""
     def register(fn: Callable):
         _REGISTRY[("structural", name)] = CheckType(
-            name, "structural", "structural", None, validate_args, fn,
+            name, "structural", "structural", None, validate_args, fn, name_keys,
         )
         return fn
 
@@ -303,6 +310,37 @@ def _collinear(args, c):
     cross = max(abs((x2 - x1) * (y - y1) - (y2 - y1) * (x - x1)) for x, y in (c.pt(n) for n in args[2:]))
     ok = cross < c.tol
     return ok, "" if ok else f"Points {args} are not collinear (cross={cross:.4f})"
+
+
+def _validate_grid_point_at_args(args: list, where: str) -> None:
+    """grid_point_at [point, x, y, tol_x, tol_y]: a name, a position in grid units and a
+    positive tolerance along each axis."""
+    def number(v):
+        return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+    ok = (
+        len(args) == 5 and isinstance(args[0], str) and bool(args[0].strip())
+        and all(number(v) for v in args[1:]) and args[3] > 0 and args[4] > 0
+    )
+    if not ok:
+        raise ValueError(
+            f"{where}: grid_point_at args must be [point, x, y, tolerance_x, tolerance_y]: a "
+            "point name, two coordinates and two positive tolerances, all in grid units"
+        )
+
+
+@register_property_type("grid_point_at", dimension=0, validate_args=_validate_grid_point_at_args)
+def _grid_point_at(args, c):
+    # args: [P, x, y, tol_x, tol_y] — P sits at (x, y) on the figure's calibrated grid, within
+    # its own absolute tolerance per axis (grid units). dimension 0: rel_tol is refused, and a
+    # ``tol`` is accepted but does not change the verdict.
+    if not c.points:
+        return None, "(skipped: no symbol table to read the point from)"
+    name, x, y, tol_x, tol_y = args
+    px, py = c.pt(name)
+    ok = abs(px - x) <= tol_x and abs(py - y) <= tol_y
+    return ok, "" if ok else (
+        f"{name} is at ({px:.4g}, {py:.4g}), expected ({x:g}, {y:g}) within ({tol_x:g}, {tol_y:g})"
+    )
 
 
 @register_property_type("equal_lengths", dimension=1, validate_args=_validate_segment_args)
@@ -660,3 +698,7 @@ def _eval_solid_count(args: dict, diagram_ir: dict | None, tikz_code: str | None
 
 register_structural_type("polygon_count", _eval_polygon_count)
 register_structural_type("solid_count", _eval_solid_count, validate_args=_validate_solid_count_args)
+
+# The drawing-reading structural checks (dashed, shaded, mark_group, ...) register themselves
+# on import; this is last so every name they need from this module already exists.
+import evals.structural_drawing  # noqa: E402,F401

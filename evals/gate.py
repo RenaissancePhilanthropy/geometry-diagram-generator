@@ -81,7 +81,7 @@ def collect_check_outcomes(
         had_checks = True
         for name, result in structural_checks.items():
             if isinstance(result, dict) and result.get("passed") is False:
-                failures.append(f"structural:{name}")
+                failures.append(f"structural:{name}" + (f":{result['resolution']}" if result.get("resolution") else ""))
             elif isinstance(result, dict) and result.get("passed") is None:
                 skipped.append(f"structural:{name}")
 

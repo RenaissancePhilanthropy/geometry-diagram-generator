@@ -56,7 +56,7 @@ from evals.ir_diagnostics import classify_ir
 from evals.check_types import structural_type
 from evals.gate import collect_check_outcomes as _collect_check_outcomes
 from evals.gate import finalize_gate_status as _finalize_gate_status
-from evals.property_names import NameResolver
+from evals.property_names import NameResolutionError, NameResolver
 from evals.scenarios import _validate_scenarios, count_unsupported_checks, split_by_required_features
 from evals.sympy_checks import (
     PRISM_PROPERTY_TYPES,
@@ -729,6 +729,7 @@ async def run_scenario(
             structural_check_defs,
             record.get("diagram_ir"),
             record.get("tikz_code"),
+            variable_ids=record.get("variable_ids"),
         )
 
     _finalize_gate_status(record, scenario.get("fail_on_warnings") or [], gate_properties)
@@ -746,11 +747,15 @@ def _run_structural_checks(
     structural_checks: list[dict],
     diagram_ir: dict | None,
     tikz_code: str | None,
+    variable_ids: dict | None = None,
 ) -> dict[str, dict]:
     """Run structural checks against the IR (preferred) or TikZ code, through
     the check-type registry (evals/check_types.py; see each structural evaluator there for
     what it counts).
     A check of an unsupported type is skipped (``passed`` None), never passed.
+    A type that declares ``name_keys`` (the drawing checks, evals/structural_drawing.py) gets
+    those args' point names resolved to figure ids first, with ``variable_ids``; a name that is
+    unresolved or ambiguous fails the check with ``resolution`` set, as for a property.
     Returns a dict mapping check name -> {"passed": bool | None, "message": str}.
     """
     results: dict[str, dict] = {}
@@ -762,7 +767,18 @@ def _run_structural_checks(
             results[name] = {"passed": None, "skipped": True, "message": _UNSUPPORTED_MESSAGE}
             continue
         try:
-            results[name] = evaluator(check.get("args", {}), diagram_ir, tikz_code)
+            args = check.get("args", {})
+            resolved: dict = {}
+            if known.name_keys and diagram_ir is not None:
+                from evals.structural_drawing import resolve_check_args
+                try:
+                    args, resolved = resolve_check_args(args, known.name_keys, diagram_ir, variable_ids)
+                except NameResolutionError as exc:
+                    results[name] = {"passed": False, "message": f"Error: {exc}", "resolution": exc.kind}
+                    continue
+            results[name] = evaluator(args, diagram_ir, tikz_code)
+            if resolved:
+                results[name]["resolved_names"] = resolved
         except Exception as exc:
             results[name] = {"passed": False, "message": f"Error: {exc}"}
     return results

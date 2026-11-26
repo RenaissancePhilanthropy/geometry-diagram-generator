@@ -48,6 +48,7 @@ Scenario fields (gates, property checks, `requires_features`, `fail_on_warnings`
 | `label_report.py` | Label-placement regression report: re-renders stored figures (no model calls) and measures point labels on their dot or far from it and segment labels far from their line, for this checkout or another (`--code-root`); `compare` diffs two reports |
 | `check_types.py` | The registry of check types (properties and structural): arguments, tolerance dimension and evaluator in one place; add a type here |
 | `property_names.py` | Resolves a scenario's point names ("A") to figure ids: id, label text, primed spelling, `variable_ids` |
+| `structural_drawing.py` | The drawing-reading structural checks (`dashed`, `shaded`, `concentric_circles`, `line_name`, `mark_group`, `polygon_drawn`, `object_exists`, `length_ratios`, `object_count`), registered in `check_types.py`; eval-only, never shown to a generating model. Their point names resolve like a property's (`structural:<name>:unresolved`/`:ambiguous` in the gate) |
 | `sympy_checks.py` | Property validation used by the gate: tolerances, name resolution, prism/stack queries |
 | `reporting.py` | Result formatting and JSONL I/O |
 | `leaderboard_launch.sh`, `leaderboard_analyze.py`, `leaderboard_plot.py` | Run, tabulate and plot the model x strategy leaderboard ([docs/headline_run_plan.md](../docs/headline_run_plan.md)) |
