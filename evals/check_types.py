@@ -298,10 +298,10 @@ def _midpoint(args, c):
 
 @register_property_type("collinear", dimension=2, validate_args=_validate_distinct_points_args(None, 3))
 def _collinear(args, c):
-    pts = [c.pt(n) for n in args]
-    (x1, y1), (x2, y2), (x3, y3) = pts[0], pts[1], pts[2]
-    cross = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1)
-    ok = abs(cross) < c.tol
+    """Every named point lies on the line through the first two (three or more points)."""
+    (x1, y1), (x2, y2) = c.pt(args[0]), c.pt(args[1])
+    cross = max(abs((x2 - x1) * (y - y1) - (y2 - y1) * (x - x1)) for x, y in (c.pt(n) for n in args[2:]))
+    ok = cross < c.tol
     return ok, "" if ok else f"Points {args} are not collinear (cross={cross:.4f})"
 
 

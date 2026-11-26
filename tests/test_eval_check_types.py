@@ -157,3 +157,11 @@ def test_registration_rejects_an_incomplete_type():
     with pytest.raises(ValueError, match="takes no tolerance dimension"):
         ct.register_property_type("bad", family="prism", dimension=1)
     assert ct.property_type("bad") is None
+
+
+@pytest.mark.parametrize("fourth, expected", [((3.0, 0.0), True), ((3.0, 0.5), False)])
+def test_collinear_checks_every_named_point_not_only_the_first_three(fourth, expected):
+    """A fourth point off the line used to be ignored (the evaluator read three names)."""
+    ctx = ct.GeometryContext({"A": (0.0, 0.0), "B": (1.0, 0.0), "C": (2.0, 0.0), "D": fourth}, tol=1e-3)
+    ok, message = ct.property_type("collinear").evaluate(["A", "B", "C", "D"], ctx)
+    assert ok is expected and (expected or "not collinear" in message)

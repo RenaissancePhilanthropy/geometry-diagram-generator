@@ -1228,3 +1228,9 @@ def test_opposite_side_on_line_returns_none():
 def test_opposite_side_missing_coord_returns_none():
     coords = {"B": (0.0, 0.0), "C": (4.0, 0.0), "A": (2.0, -1.0)}
     assert validate_geometric_property(coords, "opposite_side", ["G", "A", "B", "C"]) is None
+
+
+def test_collinear_property_checks_every_named_point():
+    coords = {"A": (0.0, 0.0), "B": (1.0, 0.0), "C": (2.0, 0.0), "D": (3.0, 0.5)}
+    assert validate_geometric_property(coords, "collinear", ["A", "B", "C"]) is True
+    assert validate_geometric_property(coords, "collinear", ["A", "B", "C", "D"]) is False

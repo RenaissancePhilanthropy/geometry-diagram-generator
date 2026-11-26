@@ -377,7 +377,7 @@ def validate_geometric_property(
       - "right_angle":     args = [A, vertex, C] — angle at vertex is 90°
       - "midpoint":        args = [M, A, B] — M is the midpoint of AB
       - "centroid":        args = [G, A, B, C] — G = (A + B + C) / 3
-      - "collinear":       args = [A, B, C] — three points are collinear
+      - "collinear":       args = [A, B, C, ...] — three or more points are collinear
       - "equal_lengths":   args = [[P1,P2], [P3,P4], ...] — all segments equal
       - "parallel":        args = [[A,B], [C,D]] — lines AB and CD are parallel
       - "perpendicular":   args = [[A,B], [C,D]] — lines AB and CD are perpendicular
@@ -430,13 +430,13 @@ def validate_geometric_property(
             )
 
         elif property_type == "collinear":
-            a_name, b_name, c_name = args
-            a = coords[a_name]
-            b = coords[b_name]
-            c = coords[c_name]
-            # Area of triangle = 0 iff collinear
-            area = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
-            return abs(area) <= tolerance
+            a = coords[args[0]]
+            b = coords[args[1]]
+            # Area of triangle (first two, each other point) = 0 iff collinear; three or more points
+            return all(
+                abs((b[0] - a[0]) * (coords[n][1] - a[1]) - (b[1] - a[1]) * (coords[n][0] - a[0])) <= tolerance
+                for n in args[2:]
+            )
 
         elif property_type == "equal_lengths":
             if not args:
