@@ -65,6 +65,7 @@ from evals.sympy_checks import (
     _validate_stack_properties,
 )
 from geometry_diagrams.features import parse_features
+from geometry_diagrams.strategies.llm import cost_ledger
 from evals.reporting import (
     _externalize_traces,
     _append_jsonl,
@@ -953,6 +954,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Per-scenario hard timeout in seconds (default: 180). Prevents SymPy/network hangs from blocking the run.",
     )
     parser.add_argument(
+        "--max-cost",
+        type=float,
+        default=None,
+        metavar="USD",
+        help="Stop starting new scenarios once the recorded cost (cost_usd of every finished record, "
+        "timed-out ones included, from the calls that completed) reaches this many USD. Scenarios "
+        "already running finish, so the total can overshoot by up to --max-concurrency scenarios. "
+        "Only priced calls count: a model with no price (cost_usd None) is never capped, and the "
+        "run says so. Skipped scenarios get no record.",
+    )
+    parser.add_argument(
         "--scenario-offset",
         type=int,
         default=0,
@@ -1053,6 +1065,8 @@ async def main() -> None:
         raise ValueError("--repeats must be >= 1")
     if args.max_concurrency < 1:
         raise ValueError("--max-concurrency must be >= 1")
+    if args.max_cost is not None and not args.max_cost > 0:
+        raise ValueError("--max-cost must be > 0")
 
     # Load scenarios
     scenarios_path = Path(args.scenarios)
@@ -1161,12 +1175,31 @@ async def main() -> None:
     all_records = []
     semaphore = asyncio.Semaphore(args.max_concurrency)
 
+    spent = {"usd": 0.0, "priced": 0}   # cost_usd of the finished records (for --max-cost)
+    skipped = {"n": 0}                  # scenarios not started because --max-cost was reached
+
     async def _run_bounded(
         scenario: dict[str, Any],
         strategy_name: str,
         repeat_index: int,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         async with semaphore:
+            if args.max_cost is not None and spent["usd"] >= args.max_cost:
+                skipped["n"] += 1
+                return None
+            record = await _attempt(scenario, strategy_name, repeat_index)
+            # Counted before the semaphore is released, so the next scenario sees it.
+            if isinstance(record.get("cost_usd"), (int, float)):
+                spent["usd"] += record["cost_usd"]
+                spent["priced"] += 1
+            return record
+
+    async def _attempt(
+        scenario: dict[str, Any],
+        strategy_name: str,
+        repeat_index: int,
+    ) -> dict[str, Any]:
+        with cost_ledger() as ledger:
             try:
                 return await asyncio.wait_for(
                     run_scenario(
@@ -1210,12 +1243,20 @@ async def main() -> None:
                     "output_tokens": 0,
                     "tool_calls": 0,
                     "retries": 0,
+                    # What the calls that finished before the timeout cost (a call cut
+                    # off mid-flight is not in it), so a cost cap built on the records
+                    # still sees a timed-out scenario.
+                    "cost_usd": ledger.cost_usd,
+                    "cost_partial": True,
                 }
             except Exception as e:
                 logger.exception("run_scenario raised (continuing)")
-                return _runner_exception_stub(
+                stub = _runner_exception_stub(
                     scenario, strategy_name, args.model, repeat_index, e
                 )
+                if stub.get("cost_usd") is None:
+                    stub["cost_usd"] = ledger.cost_usd
+                return stub
 
     for strategy_name in args.strategies:
         print(f"Strategy: {strategy_name}  model: {args.model}")
@@ -1227,6 +1268,8 @@ async def main() -> None:
         for finished in asyncio.as_completed(tasks):
             try:
                 record = await finished
+                if record is None:  # not started: --max-cost reached
+                    continue
             except Exception as e:
                 # An unhandled exception in run_scenario's post-strategy
                 # processing (sympy checks, query phase, etc.) used to
@@ -1282,6 +1325,11 @@ async def main() -> None:
                     logger.exception("periodic cache clear failed (continuing)")
 
     _print_summary(all_records)
+    if args.max_cost is not None:
+        print(f"\nCost cap: ${spent['usd']:.4f} recorded over {spent['priced']} priced record(s) of "
+              f"{len(all_records)}; cap ${args.max_cost:.4f}; {skipped['n']} scenario(s) not started.")
+        if all_records and not spent["priced"]:
+            print("WARNING: no record reported a cost (this model is unpriced), so --max-cost capped nothing.")
     print(f"\nResults written to {output_path}")
     print(f"SVGs written to {svg_output_dir}")
 

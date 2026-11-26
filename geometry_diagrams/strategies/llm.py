@@ -771,7 +771,49 @@ def extract_usage(response: AIMessage) -> tuple[int, int]:
 _GENAI_PRICES_PROVIDERS = {"anthropic": "anthropic", "google_genai": "google"}
 
 
+class CostLedger:
+    """Running total of the cost of every response ``extract_cost`` saw while it was the
+    ambient ledger (``cost_ledger()``). It lives outside the strategy's own state, so a run
+    cancelled mid-flight (an eval's per-scenario timeout) still reports what its finished
+    calls cost. A call cut off before its response arrived is not in it."""
+
+    def __init__(self) -> None:
+        self.total = 0.0
+        self.priced_calls = 0
+
+    @property
+    def cost_usd(self) -> "float | None":
+        """The total, or None when no call reported a price (an unpriced model)."""
+        return self.total if self.priced_calls else None
+
+
+_AMBIENT_COST_LEDGER: ContextVar["CostLedger | None"] = ContextVar("geometry_cost_ledger", default=None)
+
+
+@contextmanager
+def cost_ledger():
+    """Make a fresh ``CostLedger`` ambient for the block (tasks and threads started inside it
+    share it) and yield it."""
+    ledger = CostLedger()
+    token = _AMBIENT_COST_LEDGER.set(ledger)
+    try:
+        yield ledger
+    finally:
+        _AMBIENT_COST_LEDGER.reset(token)
+
+
 def extract_cost(response: AIMessage) -> "float | None":
+    """Per-request cost (USD) of an AIMessage (see ``_response_cost``); also added to the
+    ambient ``cost_ledger()`` when there is one."""
+    cost = _response_cost(response)
+    ledger = _AMBIENT_COST_LEDGER.get()
+    if ledger is not None and cost is not None:
+        ledger.total += cost
+        ledger.priced_calls += 1
+    return cost
+
+
+def _response_cost(response: AIMessage) -> "float | None":
     """Extract per-request cost (USD) from an AIMessage. A cost the provider
     reported is used as is: currently only OpenRouter does (via the extra_body
     opt-in in _GENERIC_DEFAULT_KWARGS, surfaced as response_metadata
