@@ -371,3 +371,182 @@ def test_grid_point_at_loader_rejects_malformed_args(args):
             "id": "s", "prompt": "p",
             "expected_properties": [{"name": "g", "type": "grid_point_at", "args": args}],
         }])
+
+
+# --- what the drawing checks see: every construction the renderers draw ------------------------
+
+def count(diagram, circle, straight):
+    return run("object_count", {"circle": circle, "straight": straight}, diagram)["passed"]
+
+
+def prism_figure(w=4, h=3, d=2, unit_cubes=False, **extra):
+    return {
+        "define": [pt("O", 0, 0), {"id": "P", "kind": "rectangular_prism", "origin": "O",
+                                   "length": w, "width": d, "height": h,
+                                   "unit_cubes": unit_cubes, **extra}],
+        "render": [draw("P")], "checks": [],
+    }
+
+
+def stack_figure(heights):
+    return {
+        "define": [pt("O", 0, 0), {"id": "S", "kind": "block_stack", "origin": "O", "heights": heights}],
+        "render": [draw("S")], "checks": [],
+    }
+
+
+def exterior_figure(fill=True):
+    d = triangle_figure(define=[
+        {"id": "sq", "kind": "polygon_exterior", "a": "A", "b": "B", "ref": "C", "sides": 4,
+         "vertex_names": ["A", "B", "D", "E"]},
+    ], render=[draw("sq")] + ([{"kind": "fill", "obj": "sq"}] if fill else []))
+    return d
+
+
+def test_polygon_exterior_is_drawn_filled_and_counted():
+    d = exterior_figure()
+    assert run("polygon_drawn", {"points": ["A", "B", "D", "E"]}, d)["passed"]
+    assert run("shaded", {"points": ["A", "B", "D", "E"]}, d)["passed"]
+    # AB is shared and the square's side EA continues the triangle's AC: 7 sides, 5 runs
+    assert count(d, [0, 0], [5, 5])
+
+
+def test_polygon_exterior_defined_but_not_drawn_is_not_seen():
+    d = triangle_figure(define=[
+        {"id": "sq", "kind": "polygon_exterior", "a": "A", "b": "B", "ref": "C", "sides": 4,
+         "vertex_names": ["A", "B", "D", "E"]}])
+    assert not run("polygon_drawn", {"points": ["A", "B", "D", "E"]}, d)["passed"]
+
+
+def test_polygon_on_edge_is_drawn():
+    d = triangle_figure(define=[
+        {"id": "q", "kind": "polygon_on_edge", "a": "A", "b": "B", "ref": "C",
+         "vertex_names": ["A", "B", "F", "G"], "side_lengths": [3, 4, 3], "angles": [90, 90, 90, 90]},
+    ], render=[draw("q")])
+    assert run("polygon_drawn", {"points": ["A", "B", "F", "G"]}, d)["passed"]
+
+
+def test_circle_through3_is_a_drawn_circle():
+    d = triangle_figure(define=[{"id": "w", "kind": "circle_through3", "a": "A", "b": "B", "c": "C"}],
+                        render=[draw("w")])
+    mid = {"id": "M", "kind": "point_midpoint", "p": "B", "q": "C"}
+    d["define"].append(mid)
+    assert run("object_exists", {"object": "circle", "points": ["M"]}, d)["passed"]
+    assert not run("object_exists", {"object": "circle", "points": ["A"]}, d)["passed"]
+    assert count(d, [1, 1], [3, 3])
+
+
+def test_prism_edges_faces_and_hidden_dashes():
+    d = prism_figure(4, 3, 2)
+    assert count(d, [0, 0], [12, 12])  # 12 wireframe edges, none merging
+    assert run("dashed", {"points": ["P_v001", "P_v101"]}, d)["passed"]  # hidden edge
+    assert not run("dashed", {"points": ["P_v000", "P_v100"]}, d)["passed"]  # visible edge
+    assert run("polygon_drawn", {"points": ["P_v000", "P_v100", "P_v110", "P_v010"]}, d)["passed"]
+
+
+def test_prism_hidden_edges_stay_dashed_under_a_named_style():
+    d = prism_figure(4, 3, 2)
+    d["styles"] = {"blue": {"color": "blue"}}
+    d["render"] = [draw("P", "blue")]
+    assert run("dashed", {"points": ["P_v001", "P_v101"]}, d)["passed"]
+    assert not run("dashed", {"points": ["P_v000", "P_v100"]}, d)["passed"]
+
+
+def test_prism_dimension_label_adds_no_straight_and_names_its_edge():
+    plain = prism_figure(4, 3, 2)
+    labelled = prism_figure(4, 3, 2, height_label="h")
+    assert count(labelled, [0, 0], [12, 12])
+    assert run("line_name", {"points": ["P_v000", "P_v010"], "name": "h"}, labelled)["passed"]
+    assert not run("line_name", {"points": ["P_v000", "P_v010"], "name": "h"}, plain)["passed"]
+
+
+def test_unit_cube_prism_counts_its_gridlines_and_has_no_dashed_edge():
+    d = prism_figure(3, 2, 2, unit_cubes=True)
+    assert count(d, [0, 0], [17, 17])
+    assert not run("dashed", {"points": ["P_v001", "P_v101"]}, d)["passed"]
+
+
+def test_block_stack_counts_merged_runs_and_draws_no_dashes_or_shading():
+    d = stack_figure([[2, 1], [1, 0]])
+    assert count(d, [0, 0], [19, 19])
+    assert count(stack_figure([[1, 1, 1]]), [0, 0], [13, 13])
+    assert not run("dashed", {"points": ["__S_l0_0_0", "__S_l1_0_0"]}, d)["passed"]
+    top = ["__S_l0_2_0", "__S_l1_2_0", "__S_l1_2_1", "__S_l0_2_1"]
+    assert run("polygon_drawn", {"points": top}, d)["passed"]  # the top face is drawn ...
+    assert not run("shaded", {"points": top}, d)["passed"]  # ... but not as a Fill
+
+
+def sector_figure(radii=False):
+    d = {
+        "define": [pt("O", 0, 0), pt("A", 3, 0), pt("B", 0, 3),
+                   {"id": "sec", "kind": "sector_center_start_end", "center": "O", "start": "A", "end": "B"}],
+        "render": [draw("sec")], "checks": [],
+    }
+    if radii:
+        d["define"] += [{"id": "oa", "kind": "segment", "a": "O", "b": "A"},
+                        {"id": "ob", "kind": "segment", "a": "O", "b": "B"}]
+        d["render"] += [draw("oa"), draw("ob")]
+    return d
+
+
+def test_sector_is_not_a_circle_and_its_radii_are_not_straight_unless_drawn():
+    assert count(sector_figure(), [0, 0], [0, 0])
+    assert count(sector_figure(radii=True), [0, 0], [2, 2])
+
+
+# --- line_name through a segment label ---------------------------------------------------------
+
+def line_figure(text="m", seg="l", draw_it=True, third=True):
+    d = {
+        "define": [pt("A", 0, 0), pt("B", 4, 0), pt("C", 8, 0), pt("D", 0, 6),
+                   {"id": "l", "kind": "line_through", "p": "A", "q": "B"},
+                   {"id": "other", "kind": "segment", "a": "A", "b": "D"}],
+        "render": ([draw("l")] if draw_it else []) + [draw("other"),
+                  {"kind": "label_segment", "seg": seg, "text": text}],
+        "checks": [],
+    }
+    return d
+
+
+def test_line_name_by_segment_label_on_a_line_through_the_named_points():
+    d = line_figure()
+    assert run("line_name", {"points": ["A", "B"], "name": "m"}, d)["passed"]
+    assert run("line_name", {"points": ["A", "C"], "name": "m"}, d)["passed"]  # C is on the line too
+    assert run("line_name", {"points": ["A", "B"], "name": "$m$"}, line_figure("$m$"))["passed"]
+    assert run("line_name", {"points": ["A", "B"], "name": "$m$"}, d)["passed"]
+
+
+def test_line_name_by_segment_label_fails_on_another_line_or_undrawn_or_other_text():
+    on_other = line_figure(seg="other")
+    assert not run("line_name", {"points": ["A", "B"], "name": "m"}, on_other)["passed"]
+    assert not run("line_name", {"points": ["A", "B"], "name": "m"}, line_figure(draw_it=False))["passed"]
+    assert not run("line_name", {"points": ["A", "B"], "name": "n"}, line_figure())["passed"]
+
+
+def test_line_name_label_on_an_arc_does_not_pass():
+    d = sector_figure()
+    d["define"] += [{"id": "arc", "kind": "arc_center_start_end", "center": "O", "start": "A", "end": "B"}]
+    d["render"] += [draw("arc"), {"kind": "label_segment", "seg": "arc", "text": "m"}]
+    assert not run("line_name", {"points": ["O", "A"], "name": "m"}, d)["passed"]
+
+
+def test_line_name_free_text_fallback_still_works():
+    d = line_figure(text="x")
+    d["render"].append({"kind": "label_free_text", "text": "m", "at": [2, 0.3]})
+    assert run("line_name", {"points": ["A", "B"], "name": "m"}, d)["passed"]
+    assert not run("line_name", {"points": ["A", "B"], "name": "m"}, line_figure(text="x"))["passed"]
+
+
+def test_open_polyline_is_a_chain_without_a_closing_side():
+    d = {"define": [pt("A", 0, 0), pt("B", 4, 0), pt("C", 4, 3),
+                    {"id": "pl", "kind": "polyline_open", "points": ["A", "B", "C"]}],
+         "render": [draw("pl")], "checks": []}
+    assert run("object_exists", {"object": "segment", "points": ["A", "B"]}, d)["passed"]
+    assert not run("object_exists", {"object": "segment", "points": ["A", "C"]}, d)["passed"]
+    assert count(d, [0, 0], [2, 2])
+
+
+def test_a_figure_that_does_not_compile_fails_the_check_with_the_error():
+    d = triangle_figure(define=[{"id": "bad", "kind": "segment", "a": "A", "b": "nope"}])
+    result = run("object_count", {"circle": [0, 5], "straight": [0, 5]}, d)
+    assert result["passed"] is False and result["message"].startswith("Error")

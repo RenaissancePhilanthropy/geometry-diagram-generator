@@ -6,13 +6,24 @@ Eval-only: they are registered in the check-type registry (evals/check_types.py)
 scenario file can use them; nothing here is shown to a generating model.
 
 ``read_drawing`` turns an authored diagram into a ``DrawingView``: the compiled point table,
-the drawn straight objects (each with its dashed flag), circles, filled polygons and the
-tick/parallel/angle marks. Every check judges coincidence by ``view.tolerance``, 1% of the
-figure's extent (the largest distance between two compiled points), so a figure drawn at any
-scale is judged the same way. The view reads only the authored ``define`` list (segments,
-rays, ``line_through``, triangles, polygons, ``circle_center_radius``/``circle_center_point``);
-an object drawn through another kind (a regular polygon, a prism's derived edges, an arc) is
-not seen by the drawing checks.
+the drawn straight objects (each with its dashed flag), circles, filled polygons, the
+tick/parallel/angle marks and the free and segment labels. Every check judges coincidence by
+``view.tolerance``, 1% of the figure's extent (the largest distance between two compiled
+points), so a figure drawn at any scale is judged the same way.
+
+"Drawn is drawn": the view reads the LOWERED render list (``derived.lower_render`` over the
+effective diagram, the list both renderers draw) and dispatches each draw on the type of the
+COMPILED object, not on the definition kind, so a construction counts as what it draws:
+a triangle, polygon (also a regular polygon or ``polygon_on_edge``) or ``ordered_polygon``
+contributes its sides; a segment, ray or line one straight object; an open polyline
+(``polyline_open``) a chain of straight objects (an open chain is not a polygon); a circle
+(``circle_center_*``, ``circle_through3``, a tangent circle) one circle. Arcs, sectors and
+ellipses are never circles, and a sector's radii are straight only when drawn as segments. A
+rectangular prism draws as its wireframe edges (hidden ones dashed; a ``unit_cubes`` prism
+adds its gridlines) and a block stack as its painted cube edges merged into runs, so on a
+solid ``object_count`` counts those edges (use ``solid_count`` and the ``prism_*``/``stack_*``
+properties for solids), and a stack never draws a dashed edge. An object defined but not
+drawn is not counted.
 
 Names: the point names of a check's arguments are resolved to figure ids by the runner
 (``resolve_check_args``, using evals/property_names.py) before an evaluator runs, so an
@@ -25,11 +36,14 @@ nothing to test is a skip: ``{"passed": None, "skipped": True, ...}``, never a p
 """
 from __future__ import annotations
 
+import functools
 import json
 import math
 import re
 from dataclasses import dataclass
 from typing import Any, Sequence
+
+import sympy.geometry as spg
 
 from evals.check_types import register_structural_type
 from evals.property_names import NameResolutionError, NameResolver
@@ -58,7 +72,6 @@ COUNT_KEYS = ("circle", "straight")
 _GROUP_NOUN = {"tick": "tick count", "parallel": "parallel group", "angle": "arc count"}
 _TICK_GROUP = re.compile(r"^(?:tick)?(\d+)$")
 _ARC_GROUP = re.compile(r"^(?:arc)?(\d+)$")
-_LENGTH_EXPRESSION = re.compile(r"length\(\s*([^,\s()]+)\s*,\s*([^,\s()]+)\s*\)")
 _PRIMES = str.maketrans({
     0x2032: "'", 0x2033: "''", 0x2034: "'''", 0x2019: "'", 0x2018: "'", 0x02B9: "'", 0x00B4: "'",
 })
@@ -121,48 +134,26 @@ def _arc_count(group: str | None) -> int:
     return min(int(found[1]), MAX_ARCS) if found else 1
 
 
-def _is_dashed(diagram, style: object) -> bool:
+def _is_dashed(styles: dict, style: object) -> bool:
     """Whether a draw op's style is dashed: a style named so, or one whose own ``dashed``
-    property is set (python_full names its styles ``__pydsl_style_N``)."""
+    property is set (python_full names its styles ``__pydsl_style_N``; a prism's hidden edges
+    use the reserved style ``__{id}_hidden``). ``styles`` is the lowered view's style table."""
     name = str(style or "")
-    return "dashed" in name or bool(diagram.styles.get(name, {}).get("dashed", False))
+    return "dashed" in name or bool((styles.get(name) or {}).get("dashed", False))
 
 
-def _drawn_ids(diagram) -> set[str]:
-    """Ids of every def a render op draws, fills, cuts out of a fill or draws an arc of."""
-    drawn: set[str] = set()
-    for op in diagram.render:
-        data = op.model_dump()
-        for key in ("obj", "arc"):
-            if isinstance(data.get(key), str):
-                drawn.add(data[key])
-        for key in ("holes", "arcs"):
-            if isinstance(data.get(key), list):
-                drawn.update(str(v) for v in data[key])
-    return drawn
-
-
-def _circle_params(d: dict, coords: dict[str, Point]) -> tuple[Point, float] | None:
-    """(centre, radius) of a ``circle_center_radius`` def, or None when it is not numeric
-    (or a ``length(P, Q)`` of two known points)."""
-    if d["center"] not in coords:
-        return None
-    radius = d["radius"]
-    if isinstance(radius, str):
-        named = _LENGTH_EXPRESSION.fullmatch(radius)
-        if named and named[1] in coords and named[2] in coords:
-            return coords[d["center"]], math.dist(coords[named[1]], coords[named[2]])
-        return None
-    if isinstance(radius, bool):
-        return None
-    return coords[d["center"]], float(radius)
+def _xy(p) -> Point:
+    return (float(p.x), float(p.y))
 
 
 class DrawingView:
     """A diagram read by the figure's compiled points and the objects it draws."""
 
-    def __init__(self, diagram, points: dict[str, Point]):
-        self.diagram = diagram
+    def __init__(self, diagram, sym: dict):
+        from geometry_diagrams.ir.derived import effective_diagram, lower_render
+        from geometry_diagrams.ir.to_sympy import float_point_table
+        self.diagram = diagram  # the AUTHORED diagram
+        points = float_point_table(sym)
         self.points = points
         self._resolver = NameResolver(points, diagram)
         self.straights: list[_Straight] = []
@@ -171,60 +162,61 @@ class DrawingView:
         self.segment_marks: list[_SegmentMark] = []
         self.angle_marks: list[_AngleMark] = []
         self.free_texts: list[tuple[str, Point]] = []
+        self.segment_labels: list[tuple[str, str]] = []  # (text, segment id)
+        # every compiled line/segment/ray: id -> (p1, p2, kind), and the ids drawn directly
+        self.linear: dict[str, tuple[Point, Point, str]] = {}
+        self.drawn: set[str] = set()
         pts = list(points.values())
         # the figure's extent: every compiled point counts, hidden helpers included
         self.scale = max((math.dist(p, q) for p in pts for q in pts), default=1.0) or 1.0
 
-        drawn = _drawn_ids(diagram)
-        styles = {
-            d["obj"]: d.get("style")
-            for d in (op.model_dump() for op in diagram.render) if d["kind"] == "draw"
-        }
+        # The lowered view is what the renderers draw (a prism or stack draw is already
+        # replaced by edges / ordered polygons); it is read per op, never dumped.
+        lowered = lower_render(effective_diagram(diagram), sym, [])
+        styles = lowered.styles
+        for op in lowered.render:
+            kind = op.kind
+            if kind == "draw":
+                self._read_draw(op, sym, styles)
+            elif kind == "ordered_polygon":
+                corners = [points[i] for i in op.points if i in points]
+                if len(corners) == len(op.points):
+                    self._add_sides(corners, False)
+            elif kind == "fill":
+                obj = sym.get(op.obj)
+                if isinstance(obj, spg.Polygon):
+                    self.shaded.append([_xy(v) for v in obj.vertices])
+            elif kind == "label_free_text" and op.at is not None and len(op.at) == 2:
+                self.free_texts.append((str(op.text), (float(op.at[0]), float(op.at[1]))))
+            elif kind == "label_segment":
+                self.segment_labels.append((str(op.text), op.seg))
+        for oid, obj in sym.items():
+            if isinstance(obj, (spg.Segment, spg.Ray, spg.Line)):
+                kind = "segment" if isinstance(obj, spg.Segment) else "ray" if isinstance(obj, spg.Ray) else "line"
+                self.linear[oid] = (_xy(obj.p1), _xy(obj.p2), kind)
         defs = {d.id: d.model_dump() for d in diagram.define}
-        for d in diagram.define:
-            if d.id not in drawn:
-                continue
-            m = defs[d.id]
-            dashed = _is_dashed(diagram, styles.get(d.id))
-            kind = m["kind"]
-            if kind in ("segment", "ray") and m["a"] in points and m["b"] in points:
-                self.straights.append(_Straight(points[m["a"]], points[m["b"]], kind, dashed))
-            elif kind == "line_through" and m["p"] in points and m["q"] in points:
-                self.straights.append(_Straight(points[m["p"]], points[m["q"]], "line", dashed))
-            elif kind in ("triangle", "polygon"):
-                corners = self._corners(m, points)
-                if corners:
-                    for u, v in zip(corners, [*corners[1:], corners[0]]):
-                        self.straights.append(_Straight(u, v, "segment", dashed))
-            elif kind == "circle_center_radius":
-                params = _circle_params(m, points)
-                if params is not None:
-                    self.circles.append(params)
-            elif kind == "circle_center_point" and m["center"] in points and m["through"] in points:
-                self.circles.append(
-                    (points[m["center"]], math.dist(points[m["center"]], points[m["through"]]))
-                )
         self._read_marks(diagram, defs, points)
-        for op in diagram.render:
-            data = op.model_dump()
-            if data["kind"] == "fill" and data["obj"] in defs:
-                corners = self._corners(defs[data["obj"]], points)
-                if corners:
-                    self.shaded.append(corners)
-            elif data["kind"] == "label_free_text" and isinstance(data.get("at"), list) and len(data["at"]) == 2:
-                self.free_texts.append((str(data["text"]), (float(data["at"][0]), float(data["at"][1]))))
 
-    @staticmethod
-    def _corners(m: dict, points: dict[str, Point]) -> list[Point] | None:
-        """The corner coordinates of a triangle/polygon def, None for another kind or an
-        unknown point."""
-        if m["kind"] == "triangle":
-            ids = [m["a"], m["b"], m["c"]]
-        elif m["kind"] == "polygon":
-            ids = m["points"]
-        else:
-            return None
-        return [points[i] for i in ids] if all(i in points for i in ids) else None
+    def _add_sides(self, corners: list[Point], dashed: bool, closed: bool = True) -> None:
+        n = len(corners)
+        for i in range(n if closed else n - 1):
+            self.straights.append(_Straight(corners[i], corners[(i + 1) % n], "segment", dashed))
+
+    def _read_draw(self, op, sym: dict, styles: dict) -> None:
+        obj = sym.get(op.obj)
+        self.drawn.add(op.obj)
+        dashed = _is_dashed(styles, op.style)
+        if isinstance(obj, spg.Polygon):  # also Triangle
+            self._add_sides([_xy(v) for v in obj.vertices], dashed)
+        elif isinstance(obj, list):  # an open polyline: a chain of straights, no closing side
+            chain = [_xy(v) for v in obj if isinstance(v, spg.Point)]
+            if len(chain) == len(obj):
+                self._add_sides(chain, dashed, closed=False)
+        elif isinstance(obj, (spg.Segment, spg.Ray, spg.Line)):
+            kind = "segment" if isinstance(obj, spg.Segment) else "ray" if isinstance(obj, spg.Ray) else "line"
+            self.straights.append(_Straight(_xy(obj.p1), _xy(obj.p2), kind, dashed))
+        elif isinstance(obj, spg.Circle):  # not an ellipse, arc or sector
+            self.circles.append((_xy(obj.center), float(obj.radius)))
 
     def _read_marks(self, diagram, defs: dict[str, dict], points: dict[str, Point]) -> None:
         ends: dict[str, tuple[Point, Point]] = {}
@@ -267,6 +259,21 @@ class DrawingView:
         except NameResolutionError:
             return None
 
+    def segment_label_names_line(self, name: str, a: Point, b: Point) -> bool:
+        """Whether a ``label_segment`` reading ``name`` targets a drawn line, segment or ray
+        that both ``a`` and ``b`` lie on (within the tolerance of the infinite line). Drawn
+        means a draw of the object itself, or, for a segment only, its span covered by drawn
+        straight objects (a prism edge is drawn as part of a face outline)."""
+        for text, seg in self.segment_labels:
+            found = self.linear.get(seg)
+            if found is None or _bare(text) != _bare(name):
+                continue
+            p1, p2, kind = found
+            drawn = seg in self.drawn or (kind == "segment" and _span_is_drawn(self, p1, p2))
+            if drawn and all(_distance_to_line(p, p1, p2) <= self.tolerance for p in (a, b)):
+                return True
+        return False
+
     def segment_mark_keys(self, family: str, a: Point, b: Point) -> set[int | str]:
         """Group keys of the ``family`` marks on the span a-b (either order)."""
         tol = self.tolerance
@@ -299,24 +306,31 @@ class DrawingView:
 _VIEW_CACHE: dict[str, tuple[Any, dict]] = {}
 
 
-def point_table(diagram) -> dict[str, Point]:
-    """The diagram's compiled points, id -> (x, y) (the table the property checks read)."""
-    from geometry_diagrams.ir.to_sympy import compile_defs, float_point_table
-    return float_point_table(compile_defs(diagram))
-
-
 def read_drawing(diagram_ir: dict) -> DrawingView:
-    """The authored IR (a dict) read as a ``DrawingView``; the last one is cached, because a
-    scenario runs several checks on one figure."""
+    """The authored IR (a dict) read as a ``DrawingView``; the last one is cached (on the
+    authored dict), because a scenario runs several checks on one figure. Raises what
+    compiling or lowering raises (``_guarded`` turns that into a failed check)."""
     from geometry_diagrams.ir.ir import DiagramIR
+    from geometry_diagrams.ir.to_sympy import compile_defs
     key = json.dumps(diagram_ir, sort_keys=True, default=str)
     hit = _VIEW_CACHE.get("last")
     if hit is not None and hit[0] == key:
         return hit[1]
     diagram = DiagramIR.model_validate(diagram_ir)
-    view = DrawingView(diagram, point_table(diagram))
+    view = DrawingView(diagram, compile_defs(diagram))
     _VIEW_CACHE["last"] = (key, view)
     return view
+
+
+def _guarded(evaluate):
+    """An evaluator whose compile/lowering failure is a failed check, not an exception."""
+    @functools.wraps(evaluate)
+    def wrapper(args, diagram_ir, tikz_code):
+        try:
+            return evaluate(args, diagram_ir, tikz_code)
+        except Exception as exc:
+            return {"passed": False, "message": f"Error: {exc}"}
+    return wrapper
 
 
 def resolve_check_args(
@@ -386,6 +400,15 @@ def _distance_to_segment(p: Point, a: Point, b: Point) -> float:
         return math.dist(p, a)
     t = max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length_sq))
     return math.dist(p, (a[0] + t * dx, a[1] + t * dy))
+
+
+def _distance_to_line(p: Point, a: Point, b: Point) -> float:
+    """Distance from ``p`` to the infinite line through ``a`` and ``b``."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length = math.hypot(dx, dy)
+    if length == 0:
+        return math.dist(p, a)
+    return abs((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / length
 
 
 def _line_angle_deg(p: tuple[Point, Point], q: tuple[Point, Point]) -> float:
@@ -601,9 +624,12 @@ def _unknown(names: list[str], points: list[Point | None]) -> dict:
 
 
 @register_structural_type("dashed", validate_args=_validate_dashed, name_keys=("points",))
+@_guarded
 def _eval_dashed(args: dict, diagram_ir: dict | None, tikz_code: str | None) -> dict:
     """dashed: drawn dashed straight objects cover the whole span between the first two
-    named points (a dashed run drawn in pieces counts). The object kind is not enforced."""
+    named points (a dashed run drawn in pieces counts). The object kind is not enforced. A
+    prism's hidden edges are dashed (its reserved ``__{id}_hidden`` style); a block stack
+    draws no dashed edge, so dashed on a stack never passes."""
     names = _names(args, "points")
     if diagram_ir is None or len(names) < 2:
         return _skip("needs the authored IR and two named points")
@@ -616,6 +642,7 @@ def _eval_dashed(args: dict, diagram_ir: dict | None, tikz_code: str | None) -> 
 
 
 @register_structural_type("shaded", validate_args=_validate_shaded, name_keys=("points",))
+@_guarded
 def _eval_shaded(args: dict, diagram_ir: dict | None, tikz_code: str | None) -> dict:
     """shaded: a filled triangle or polygon has exactly the named corners, in any order."""
     names = _names(args, "points")
@@ -639,6 +666,7 @@ def _eval_shaded(args: dict, diagram_ir: dict | None, tikz_code: str | None) -> 
 
 
 @register_structural_type("concentric_circles", validate_args=_validate_concentric, name_keys=("center",))
+@_guarded
 def _eval_concentric(args: dict, diagram_ir: dict | None, tikz_code: str | None) -> dict:
     """concentric_circles: at least ``count`` circles centred on the point whose radii
     differ pairwise by more than the tolerance (one circle drawn twice is one)."""
@@ -656,10 +684,16 @@ def _eval_concentric(args: dict, diagram_ir: dict | None, tikz_code: str | None)
 
 
 @register_structural_type("line_name", validate_args=_validate_line_name, name_keys=("points",))
+@_guarded
 def _eval_line_name(args: dict, diagram_ir: dict | None, tikz_code: str | None) -> dict:
-    """line_name: a ``label_free_text`` reading the name sits within 15% of the figure's
-    extent of the segment between the first and last named point. Weak by design: it cannot
-    tell which of two nearby lines the text names."""
+    """line_name: the name is on the line through the first and last named point, by one of
+    two routes. Strong: a ``label_segment`` whose text equals the name (``$m$`` == ``m``)
+    targets a drawn line, segment or ray that both named points lie on (each within the
+    tolerance of the INFINITE line, so a labelled segment shorter than the named span still
+    counts); the label is bound to the object it targets, never to the nearest line. Weak
+    fallback: a ``label_free_text`` reading the name sits within 15% of the figure's extent of
+    the segment between the two points; it cannot tell which of two nearby lines the text
+    names."""
     names, wanted = _names(args, "points"), args.get("name")
     if diagram_ir is None or len(names) < 2 or not isinstance(wanted, str):
         return _skip("needs the authored IR, two points on the line and its name")
@@ -667,16 +701,19 @@ def _eval_line_name(args: dict, diagram_ir: dict | None, tikz_code: str | None) 
     ends = [view.point(names[0]), view.point(names[-1])]
     if None in ends:
         return _unknown([names[0], names[-1]], ends)
+    if view.segment_label_names_line(wanted, ends[0], ends[1]):
+        return _result(True)
     reach = LINE_NAME_REACH_FRACTION * view.scale
     texts = [at for text, at in view.free_texts if _bare(text) == _bare(wanted)]
-    if not texts:
-        return _result(False, f"no text reading {wanted!r} is drawn")
-    ok = any(_distance_to_segment(t, ends[0], ends[1]) <= reach for t in texts)
-    return _result(ok, "" if ok else
-                   f"the text {wanted!r} is not beside the line through {names[0]} and {names[-1]}")
+    if any(_distance_to_segment(t, ends[0], ends[1]) <= reach for t in texts):
+        return _result(True)
+    return _result(False,
+                   f"the name {wanted!r} is neither a segment label on a drawn line through "
+                   f"{names[0]} and {names[-1]} nor a free text beside it")
 
 
 @register_structural_type("mark_group", validate_args=_validate_mark_group, name_keys=("members",))
+@_guarded
 def _eval_mark_group(args: dict, diagram_ir: dict | None, tikz_code: str | None) -> dict:
     """mark_group: the named segments (or angles) carry the same mark, read from
     ``mark_segments``/``mark_angles``: a tick count, a ``parallelN`` group or an arc count
@@ -705,6 +742,7 @@ def _eval_mark_group(args: dict, diagram_ir: dict | None, tikz_code: str | None)
 
 
 @register_structural_type("polygon_drawn", validate_args=_validate_polygon_drawn, name_keys=("points",))
+@_guarded
 def _eval_polygon_drawn(args: dict, diagram_ir: dict | None, tikz_code: str | None) -> dict:
     """polygon_drawn: every side between consecutive named vertices (the last back to the
     first) is covered by drawn straight objects, whatever drew them. A longer object drawn
@@ -724,6 +762,7 @@ def _eval_polygon_drawn(args: dict, diagram_ir: dict | None, tikz_code: str | No
 
 
 @register_structural_type("object_exists", validate_args=_validate_object_exists, name_keys=("points",))
+@_guarded
 def _eval_object_exists(args: dict, diagram_ir: dict | None, tikz_code: str | None) -> dict:
     """object_exists: a circle about the first named point (through the second, if named), or
     drawn straight objects covering the span between two named points. The kind (segment,
@@ -751,6 +790,7 @@ def _ratio_agreement(mine: float, others: list[float]) -> int:
 
 
 @register_structural_type("length_ratios", validate_args=_validate_length_ratios, name_keys=("segments",))
+@_guarded
 def _eval_length_ratios(args: dict, diagram_ir: dict | None, tikz_code: str | None) -> dict:
     """length_ratios: the named segments have the written lengths up to one common scale.
     Each segment's drawn/written ratio must agree with that of at least half the others, so a
@@ -777,9 +817,13 @@ def _eval_length_ratios(args: dict, diagram_ir: dict | None, tikz_code: str | No
 
 
 @register_structural_type("object_count", validate_args=_validate_object_count)
+@_guarded
 def _eval_object_count(args: dict, diagram_ir: dict | None, tikz_code: str | None) -> dict:
-    """object_count: the figure draws between ``low`` and ``high`` circles and straight runs
-    (a run is a maximal set of collinear spans that overlap or touch, however drawn). Hidden
+    """object_count: the figure draws between ``low`` and ``high`` circles (full circles only,
+    never arcs, sectors or ellipses) and straight runs (a run is a maximal set of collinear
+    spans that overlap or touch, however drawn). An open polyline counts as its chain of
+    straights. Meaningless on solids: a prism counts as its drawn edges and a block stack as
+    its painted cube edges merged into runs (use ``solid_count``/``stack_*``). Hidden
     helpers that are never drawn do not count. An omission that leaves pieces between the two
     merge rules still reaches ``low`` and is not caught (an accepted limit)."""
     limits = {key: _count_range(args.get(key)) for key in COUNT_KEYS}
