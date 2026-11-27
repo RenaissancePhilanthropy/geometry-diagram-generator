@@ -41,10 +41,18 @@ class NameResolutionError(ValueError):
         self.kind = kind
 
 
+# What a model writes for a prime, each as the ASCII prime(s) it stands for: the prime, double
+# and triple prime signs (``G\u2033`` is ``G''``), the typographic quotes, the modifier letter
+# prime and the acute accent that some fonts and models substitute.
+PRIME_SPELLINGS = str.maketrans({
+    0x2032: "'", 0x2033: "''", 0x2034: "'''", 0x2019: "'", 0x2018: "'", 0x02B9: "'", 0x00B4: "'",
+})
+
+
 def _bare(text: str) -> str:
     """A label text or name without math delimiters, braces and spaces, one prime
-    spelling (``A\u2032`` is ``A'``, ``A_{1}`` is ``A_1``)."""
-    text = text.replace("\u2032", "'").replace("{", "").replace("}", "")
+    spelling (``A\u2032`` is ``A'``, ``G\u2033`` is ``G''``, ``A_{1}`` is ``A_1``)."""
+    text = text.translate(PRIME_SPELLINGS).replace("{", "").replace("}", "")
     return "".join(text.replace("$", " ").split())
 
 

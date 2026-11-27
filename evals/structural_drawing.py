@@ -46,7 +46,7 @@ from typing import Any, Sequence
 import sympy.geometry as spg
 
 from evals.check_types import register_structural_type
-from evals.property_names import NameResolutionError, NameResolver
+from evals.property_names import PRIME_SPELLINGS, NameResolutionError, NameResolver
 
 Point = tuple[float, float]
 
@@ -72,9 +72,6 @@ COUNT_KEYS = ("circle", "straight")
 _GROUP_NOUN = {"tick": "tick count", "parallel": "parallel group", "angle": "arc count"}
 _TICK_GROUP = re.compile(r"^(?:tick)?(\d+)$")
 _ARC_GROUP = re.compile(r"^(?:arc)?(\d+)$")
-_PRIMES = str.maketrans({
-    0x2032: "'", 0x2033: "''", 0x2034: "'''", 0x2019: "'", 0x2018: "'", 0x02B9: "'", 0x00B4: "'",
-})
 
 
 def _skip(message: str) -> dict:
@@ -87,7 +84,7 @@ def _result(passed: bool, message: str = "") -> dict:
 
 def _bare(text: str) -> str:
     """A label text without math delimiters and spaces, every prime as ASCII ``'``."""
-    return text.replace("$", "").replace(" ", "").translate(_PRIMES)
+    return text.replace("$", "").replace(" ", "").translate(PRIME_SPELLINGS)
 
 
 # ---------------------------------------------------------------------------

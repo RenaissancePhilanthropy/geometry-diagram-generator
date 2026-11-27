@@ -333,3 +333,11 @@ def test_leaderboard_separates_point_naming_failures_from_geometry():
     plot = pytest.importorskip("evals.leaderboard_plot")
     assert plot._failure_bucket({}, "property", "property:b:unresolved") == "point naming"
     assert plot._failure_bucket({}, "property", "property:a") == "geometric predicate"
+
+
+@pytest.mark.parametrize("label, name", [
+    ("G″", "G''"), ("$G″$", "G''"), ("G''", "G″"), ("G’", "G'"), ("Gʹ", "G'"),
+])
+def test_prime_spellings_the_models_use_resolve_to_one_name(label, name):
+    """A model writes a double prime as U+2033, an apostrophe as U+2019: all read as ASCII primes."""
+    assert _labelled(["x"], {"x": label}).resolve(name) == "x"
