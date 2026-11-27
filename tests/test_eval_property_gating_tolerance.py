@@ -66,18 +66,18 @@ def _verdict(k: float, **tol) -> bool:
     return r["passed"]
 
 
-def test_default_tolerance_is_unchanged_and_absolute():
-    # cross = 10k * 0.001k = 0.01 k^2: passes below 5e-3 only at tiny scale.
-    assert _verdict(0.5) is True and _verdict(1.0) is False and _verdict(100.0) is False
+def test_default_tolerance_is_an_absolute_distance():
+    # C is 0.001k off the line AB: within the default 5e-3 below k = 5.
+    assert _verdict(0.5) is True and _verdict(1.0) is True and _verdict(10.0) is False and _verdict(100.0) is False
 
 
 def test_absolute_tol_overrides_the_default():
-    assert _verdict(1.0, tol=0.05) is True
+    assert _verdict(10.0, tol=0.05) is True
     assert _verdict(1.0, tol=1e-6) is False
 
 
 def test_relative_tol_gives_the_same_verdict_at_every_scale():
-    # collinear compares an area: the tolerance scales with the figure squared.
+    # collinear compares a distance: the tolerance scales with the figure.
     verdicts = {_verdict(k, rel_tol=1e-3) for k in (0.01, 1.0, 100.0)}
     assert len(verdicts) == 1
     assert {_verdict(k, rel_tol=1e-6) for k in (0.01, 1.0, 100.0)} == {False}
@@ -199,3 +199,19 @@ def test_scaling_families_not_covered_above_are_the_ones_listed():
     assert scaling - set(_SCALED) == {
         "point_on_segment", "point_on_circle", "tangent", "intersects", "equidistant_from_sides", "centroid",
     }
+
+
+def test_collinear_rel_tol_does_not_loosen_as_the_first_two_points_come_together():
+    """The allowed offset is a fraction of the figure, not of the A-B span (a cross product
+    would let a point 10% of the figure off the line pass when A and B are close)."""
+    pts = {"A": (0.0, 0.0), "B": (1.0, 0.0), "C": (5.0, 1.0), "Z": (100.0, 0.0)}   # figure ~100, C is 1.0 off AB
+    for tol, expected in ((0.005, False), (0.05, True)):
+        (r,) = _validate_properties_sympy(
+            _load({"name": "c", "type": "collinear", "args": ["A", "B", "C"], "rel_tol": tol}), pts)
+        assert r["passed"] is expected, (tol, r)
+
+
+def test_collinear_with_coincident_first_points_fails_instead_of_passing_vacuously():
+    pts = {"A": (0.0, 0.0), "B": (0.0, 0.0), "C": (5.0, 1.0)}
+    (r,) = _validate_properties_sympy(_load({"name": "c", "type": "collinear", "args": ["A", "B", "C"]}), pts)
+    assert r["passed"] is False and "coincide" in r["message"]

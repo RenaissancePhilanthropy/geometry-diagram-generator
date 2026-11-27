@@ -303,13 +303,18 @@ def _midpoint(args, c):
     return ok, "" if ok else f"|MA|={d_ma:.4f} ≠ |MB|={d_mb:.4f}"
 
 
-@register_property_type("collinear", dimension=2, validate_args=_validate_distinct_points_args(None, 3))
+@register_property_type("collinear", dimension=1, validate_args=_validate_distinct_points_args(None, 3))
 def _collinear(args, c):
-    """Every named point lies on the line through the first two (three or more points)."""
+    """Every named point lies on the line through the first two (three or more points), each
+    judged by its distance to that line, so ``rel_tol`` is a fraction of the figure however
+    short the first-to-second span is (a cross product would grow with that span)."""
     (x1, y1), (x2, y2) = c.pt(args[0]), c.pt(args[1])
-    cross = max(abs((x2 - x1) * (y - y1) - (y2 - y1) * (x - x1)) for x, y in (c.pt(n) for n in args[2:]))
-    ok = cross < c.tol
-    return ok, "" if ok else f"Points {args} are not collinear (cross={cross:.4f})"
+    length = math.hypot(x2 - x1, y2 - y1)
+    if length == 0.0:
+        return False, f"{args[0]} and {args[1]} coincide, so they define no line"
+    worst = max(abs((x2 - x1) * (y - y1) - (y2 - y1) * (x - x1)) / length for x, y in (c.pt(n) for n in args[2:]))
+    ok = worst < c.tol
+    return ok, "" if ok else f"Points {args} are not collinear (distance from the line {args[0]}{args[1]}={worst:.4f})"
 
 
 def _validate_grid_point_at_args(args: list, where: str) -> None:

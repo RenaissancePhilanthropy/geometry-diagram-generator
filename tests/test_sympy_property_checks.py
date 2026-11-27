@@ -64,7 +64,7 @@ class TestCollinear:
     def test_collinear_error_message_contains_points(self):
         passed, msg = _check_sympy_property("collinear", ["A", "B", "D"], SYM_COLLINEAR, TOL)
         assert not passed
-        assert "cross" in msg
+        assert "not collinear" in msg and "distance" in msg
 
 
 class TestPointOnLine:
